@@ -238,5 +238,4 @@ data/                       # Runtime data (gitignored)
 7. Build the UI in `src/components/` and page in `src/app/`
 
 ## License
-
-MIT
+GPL-3.0 license
