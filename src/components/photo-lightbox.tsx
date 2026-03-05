@@ -379,8 +379,8 @@ export function PhotoLightbox({
                 toolbarVisible ? "opacity-100" : "opacity-0 pointer-events-none"
               )}
             >
-              {/* Left: zoom controls */}
-              <div className="flex items-center gap-0.5">
+              {/* Left: zoom controls (hidden on mobile) */}
+              <div className="hidden md:flex items-center gap-0.5">
                 <ToolbarButton
                   onClick={zoomOut}
                   disabled={zoom <= MIN_ZOOM}
@@ -409,8 +409,13 @@ export function PhotoLightbox({
                 </ToolbarButton>
               </div>
 
-              {/* Center: counter */}
-              <div className="absolute left-1/2 -translate-x-1/2 text-sm font-medium text-white/70">
+              {/* Left on mobile: counter */}
+              <div className="md:hidden text-sm font-medium text-white/70">
+                {currentIndex + 1} / {photos.length}
+              </div>
+
+              {/* Center: counter (desktop only) */}
+              <div className="hidden md:block absolute left-1/2 -translate-x-1/2 text-sm font-medium text-white/70">
                 {currentIndex + 1} / {photos.length}
               </div>
 
@@ -436,11 +441,11 @@ export function PhotoLightbox({
 
             {/* Main image area */}
             <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-              {/* Prev button */}
+              {/* Prev button (hidden on mobile — use swipe) */}
               {currentIndex > 0 && (
                 <button
                   className={cn(
-                    "absolute left-3 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-all hover:bg-black/60 hover:text-white hover:scale-110 md:h-12 md:w-12",
+                    "absolute left-2 z-20 hidden md:flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-all hover:bg-black/60 hover:text-white hover:scale-110 lg:h-12 lg:w-12",
                     toolbarVisible ? "opacity-100" : "opacity-0 pointer-events-none",
                     "transition-opacity duration-300"
                   )}
@@ -471,7 +476,7 @@ export function PhotoLightbox({
                     tiled
                     imageWidth={photo.width}
                     imageHeight={photo.height}
-                    className="max-h-[calc(100vh-8rem)] max-w-[calc(100vw-2rem)] select-none transition-transform duration-150 ease-out"
+                    className="max-h-[calc(100vh-4rem)] max-w-[calc(100vw-1rem)] md:max-h-[calc(100vh-8rem)] md:max-w-[calc(100vw-2rem)] select-none transition-transform duration-150 ease-out"
                     style={{
                       transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                     }}
@@ -480,7 +485,7 @@ export function PhotoLightbox({
                   <BlobImage
                     src={photo.url}
                     alt={photo.filename}
-                    className="max-h-[calc(100vh-8rem)] max-w-[calc(100vw-2rem)] select-none object-contain transition-transform duration-150 ease-out"
+                    className="max-h-[calc(100vh-4rem)] max-w-[calc(100vw-1rem)] md:max-h-[calc(100vh-8rem)] md:max-w-[calc(100vw-2rem)] select-none object-contain transition-transform duration-150 ease-out"
                     style={{
                       transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                     }}
@@ -488,11 +493,11 @@ export function PhotoLightbox({
                 )}
               </div>
 
-              {/* Next button */}
+              {/* Next button (hidden on mobile — use swipe) */}
               {currentIndex < photos.length - 1 && (
                 <button
                   className={cn(
-                    "absolute right-3 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-all hover:bg-black/60 hover:text-white hover:scale-110 md:h-12 md:w-12",
+                    "absolute right-2 z-20 hidden md:flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-all hover:bg-black/60 hover:text-white hover:scale-110 lg:h-12 lg:w-12",
                     toolbarVisible ? "opacity-100" : "opacity-0 pointer-events-none",
                     "transition-opacity duration-300"
                   )}
@@ -518,12 +523,12 @@ export function PhotoLightbox({
                 </p>
               )}
 
-              {/* Filmstrip */}
+              {/* Filmstrip (hidden on small phones, compact on tablet) */}
               {photos.length > 1 && (
-                <div className="flex justify-center px-4">
+                <div className="hidden sm:flex justify-center px-4">
                   <div
                     ref={filmstripRef}
-                    className="flex gap-1.5 overflow-x-auto py-1 px-1 max-w-[min(100vw-2rem,600px)] scrollbar-none"
+                    className="flex gap-1 md:gap-1.5 overflow-x-auto py-1 px-1 max-w-[min(100vw-2rem,600px)] scrollbar-none"
                     style={{ scrollbarWidth: "none" }}
                   >
                     {photos.map((p, i) => (
@@ -531,7 +536,7 @@ export function PhotoLightbox({
                         key={p.id}
                         data-index={i}
                         className={cn(
-                          "shrink-0 h-12 w-12 rounded-md overflow-hidden border-2 transition-all duration-150",
+                          "shrink-0 h-9 w-9 md:h-12 md:w-12 rounded-md overflow-hidden border-2 transition-all duration-150",
                           i === currentIndex
                             ? "border-white ring-1 ring-white/50 scale-110"
                             : "border-transparent opacity-50 hover:opacity-80 hover:border-white/30"

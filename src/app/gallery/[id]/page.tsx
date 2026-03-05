@@ -233,9 +233,9 @@ export default function GalleryDetailPage() {
       <div>
         <Skeleton className="mb-4 h-8 w-48" />
         <Skeleton className="mb-6 h-5 w-32" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-lg" />
+        <div className="flex flex-wrap gap-1">
+          {[1.5, 0.75, 1.33, 1, 0.67, 1.5, 1, 1.33].map((aspect, i) => (
+            <Skeleton key={i} className="rounded-lg h-[140px] sm:h-[220px]" style={{ flexGrow: aspect, flexBasis: `${140 * aspect}px` }} />
           ))}
         </div>
       </div>
