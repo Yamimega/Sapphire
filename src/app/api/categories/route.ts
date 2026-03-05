@@ -23,7 +23,7 @@ export async function GET() {
     .orderBy(asc(categories.displayOrder))
     .all();
 
-  const result = rows.map((row) => ({
+  const result = rows.map((row: any) => ({
     ...row,
     coverImageUrl: row.coverImagePath ? `/api/images/covers/${row.coverImagePath}` : null,
   }));

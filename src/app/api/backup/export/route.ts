@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { sqlite, DB_PATH } from "@/lib/db";
+import { getSqlite, DB_PATH } from "@/lib/db";
 import { UPLOADS_DIR } from "@/lib/constants";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
+import { isPostgres } from "@/lib/db/config";
 import archiver from "archiver";
 import fs from "fs";
 import { PassThrough, Readable } from "stream";
@@ -13,8 +14,15 @@ export const maxDuration = 300;
 export async function GET() {
   if (!(await isAuthenticated())) return requireAuthResponse();
 
+  if (isPostgres) {
+    return NextResponse.json(
+      { error: "Backup export is only available in SQLite mode. Use pg_dump for PostgreSQL." },
+      { status: 400 }
+    );
+  }
+
   // Flush WAL to ensure consistent backup
-  sqlite.pragma("wal_checkpoint(TRUNCATE)");
+  getSqlite().pragma("wal_checkpoint(TRUNCATE)");
 
   if (!fs.existsSync(DB_PATH)) {
     return NextResponse.json({ error: "No database found" }, { status: 404 });

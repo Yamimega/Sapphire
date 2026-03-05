@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, sqlite } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { albums } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { formatDatetime } from "@/lib/server-utils";
@@ -16,7 +16,7 @@ export async function PUT(request: NextRequest) {
 
   // Verify all albums exist
   const existingGalleries = db.select({ id: albums.id }).from(albums).all();
-  const existingIds = new Set(existingGalleries.map((a) => a.id));
+  const existingIds = new Set(existingGalleries.map((a: { id: string }) => a.id));
 
   if (galleryIds.length !== existingIds.size || !galleryIds.every((id) => existingIds.has(id))) {
     return NextResponse.json(
@@ -26,14 +26,14 @@ export async function PUT(request: NextRequest) {
   }
 
   const now = formatDatetime();
-  sqlite.transaction(() => {
+  await withTransaction(() => {
     for (let i = 0; i < galleryIds.length; i++) {
       db.update(albums)
         .set({ displayOrder: i, updatedAt: now })
         .where(eq(albums.id, galleryIds[i]))
         .run();
     }
-  })();
+  });
 
   return NextResponse.json({ success: true });
 }

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     .all();
 
   // Batch-fetch thumbnails for all albums (avoids N+1)
-  const albumIds = albumRows.map((a) => a.id);
+  const albumIds = albumRows.map((a: any) => a.id);
   const thumbnailMap = new Map<string, string[]>();
   if (albumIds.length > 0) {
     // Use ROW_NUMBER to limit thumbnails per album in a single query
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, dateGalleries]) => ({
       date,
-      galleries: dateGalleries.map((g) => ({
+      galleries: dateGalleries.map((g: any) => ({
         id: g.id,
         title: g.title,
         photoCount: g.photoCount,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, sqlite } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { siteSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
@@ -76,14 +76,15 @@ export async function PUT(request: NextRequest) {
   }
 
   const allowedKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-  sqlite.transaction(() => {
+  await withTransaction(() => {
     for (const [key, value] of Object.entries(settings)) {
       if (!allowedKeys.has(key)) continue;
-      sqlite.prepare(
-        "INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-      ).run(key, String(value));
+      db.insert(siteSettings)
+        .values({ key, value: String(value) })
+        .onConflictDoUpdate({ target: siteSettings.key, set: { value: String(value) } })
+        .run();
     }
-  })();
+  });
 
   return NextResponse.json({ success: true });
 }

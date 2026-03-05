@@ -105,7 +105,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     .orderBy(asc(photos.displayOrder))
     .all();
 
-  const result = rows.map((photo) => ({
+  const result = rows.map((photo: any) => ({
     ...photo,
     url: signImageUrl(`/api/images/originals/${path.basename(photo.filepath)}`, id),
     thumbnailUrl: signImageUrl(`/api/images/thumbnails/${path.basename(photo.thumbnailPath)}`, id),
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       .from(photos)
       .where(eq(photos.albumId, id))
       .all()
-      .map((p) => p.contentHash)
+      .map((p: any) => p.contentHash)
   );
 
   const created = [];
@@ -178,12 +178,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     const originalFilename = `${contentHash}.jpg`;
     const thumbnailFilename = `${contentHash}.webp`;
 
-    // Decode once, reuse for all operations
-    const pipeline = sharp(buffer);
-    const metadata = await pipeline.metadata();
+    // Decode image once — clone the pipeline for each operation to avoid
+    // re-decoding the full buffer multiple times (big savings on 20MB+ files)
+    const decoded = sharp(buffer, { unlimited: true });
+    const metadata = await decoded.metadata();
     const exifInfo = extractExif(metadata);
 
-    // Run thumbnail, blur, and original conversion concurrently
     const originalPath = path.join(ORIGINALS_DIR, originalFilename);
     const thumbnailDest = path.join(THUMBNAILS_DIR, thumbnailFilename);
     const originalExists = fs.existsSync(originalPath);
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         savedSize = buffer.length;
       } else {
         tasks.push(
-          sharp(buffer)
+          decoded.clone()
             .keepMetadata()
             .jpeg({ quality: 92, mozjpeg: true })
             .toBuffer()
@@ -213,23 +213,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       savedSize = fs.statSync(originalPath).size;
     }
 
-    // Thumbnail
+    // Thumbnail — effort:0 for fast webp encoding, nearLossless for quality
     if (!thumbExists) {
       tasks.push(
-        sharp(buffer)
+        decoded.clone()
           .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
-          .webp({ quality: 80 })
+          .webp({ quality: 80, effort: 0 })
           .toBuffer()
           .then((buf) => { fs.writeFileSync(thumbnailDest, buf); })
       );
     }
 
-    // Blur placeholder
+    // Blur placeholder (tiny 10px image)
     let blurDataUrl = "";
     tasks.push(
-      sharp(buffer)
+      decoded.clone()
         .resize(10)
-        .webp({ quality: 20 })
+        .webp({ quality: 20, effort: 0 })
         .toBuffer()
         .then((buf) => {
           blurDataUrl = `data:image/webp;base64,${buf.toString("base64")}`;
@@ -298,13 +298,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     .from(photos)
     .where(eq(photos.albumId, id))
     .all();
-  const albumPhotoMap = new Map(albumPhotos.map((p) => [p.id, p]));
+  const albumPhotoMap = new Map(albumPhotos.map((p: any) => [p.id, p]));
 
   let deleted = 0;
   for (const photoId of photoIds) {
     const photo = albumPhotoMap.get(photoId);
     if (!photo) continue;
-    deletePhotoFiles(photo);
+    deletePhotoFiles(photo as { filepath: string; thumbnailPath: string });
     db.delete(photos).where(eq(photos.id, photoId)).run();
     deleted++;
   }

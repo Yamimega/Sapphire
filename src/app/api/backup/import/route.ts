@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DATA_DIR, UPLOADS_DIR, UPLOAD_SUBDIRS } from "@/lib/constants";
-import { sqlite, replaceConnection, openConnection, DB_PATH } from "@/lib/db";
+import { getSqlite, replaceConnection, openConnection, DB_PATH } from "@/lib/db";
+import { isPostgres } from "@/lib/db/config";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
 import unzipper from "unzipper";
 import path from "path";
@@ -8,6 +9,14 @@ import fs from "fs";
 
 export async function POST(request: NextRequest) {
   if (!(await isAuthenticated())) return requireAuthResponse();
+
+  if (isPostgres) {
+    return NextResponse.json(
+      { error: "Backup import is only available in SQLite mode. Use pg_restore for PostgreSQL." },
+      { status: 400 }
+    );
+  }
+
   const formData = await request.formData();
   const file = formData.get("backup") as File | null;
 
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   // Flush WAL before replacing
   try {
-    sqlite.pragma("wal_checkpoint(TRUNCATE)");
+    getSqlite().pragma("wal_checkpoint(TRUNCATE)");
   } catch { /* may already be closed or not in WAL mode */ }
 
   try {

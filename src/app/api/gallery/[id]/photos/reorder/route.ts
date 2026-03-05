@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, sqlite } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { albums, photos } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
@@ -26,7 +26,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     .from(photos)
     .where(eq(photos.albumId, id))
     .all();
-  const existingIds = new Set(existingPhotos.map((p) => p.id));
+  const existingIds = new Set(existingPhotos.map((p: { id: string }) => p.id));
 
   if (photoIds.length !== existingIds.size || !photoIds.every((pid) => existingIds.has(pid))) {
     return NextResponse.json(
@@ -35,11 +35,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  sqlite.transaction(() => {
+  await withTransaction(() => {
     for (let i = 0; i < photoIds.length; i++) {
       db.update(photos).set({ displayOrder: i }).where(eq(photos.id, photoIds[i])).run();
     }
-  })();
+  });
 
   return NextResponse.json({ success: true });
 }
