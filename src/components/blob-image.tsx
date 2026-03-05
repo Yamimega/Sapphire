@@ -11,10 +11,34 @@ interface BlobImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
 export function BlobImage({ src, alt, className, style, ...props }: BlobImageProps) {
   const [blobUrl, setBlobUrl] = useState<string>(() => blobCache.get(src) ?? "");
   const [error, setError] = useState(false);
+  const [visible, setVisible] = useState(() => !!blobCache.get(src));
+  const containerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Lazy: observe visibility before fetching
   useEffect(() => {
-    if (!src) return;
+    if (blobCache.get(src)) {
+      setVisible(true);
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [src]);
+
+  // Fetch once visible
+  useEffect(() => {
+    if (!src || !visible) return;
 
     const cached = blobCache.get(src);
     if (cached) {
@@ -42,11 +66,11 @@ export function BlobImage({ src, alt, className, style, ...props }: BlobImagePro
     return () => {
       controller.abort();
     };
-  }, [src]);
+  }, [src, visible]);
 
   if (error || !blobUrl) {
     return (
-      <div className={className} style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div ref={containerRef} className={className} style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div className="h-full w-full animate-pulse bg-muted" />
       </div>
     );

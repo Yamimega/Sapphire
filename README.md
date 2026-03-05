@@ -61,6 +61,9 @@ Create a `.env` file:
 
 ```env
 SAPPHIRE_PASSWORD=your-secret-password
+
+# Optional: use PostgreSQL instead of SQLite
+# DATABASE_URL=postgresql://user:password@localhost:5432/sapphire
 ```
 
 ```bash
@@ -69,12 +72,33 @@ npm run build && npm start
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### PostgreSQL Setup
+
+By default Sapphire uses SQLite (zero configuration). To use PostgreSQL instead:
+
+1. Create a PostgreSQL database:
+   ```sql
+   CREATE DATABASE sapphire;
+   ```
+2. Add `DATABASE_URL` to your `.env`:
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/sapphire
+   ```
+3. Run migrations:
+   ```bash
+   npm run db:generate
+   npm run db:migrate
+   ```
+
+Backup/restore in PostgreSQL mode should use `pg_dump` / `pg_restore` instead of the built-in backup feature. The `npm run backup` script is SQLite-only.
+
 > Without `SAPPHIRE_PASSWORD`, the app runs in **read-only mode** — visitors can browse but cannot upload, edit, or delete anything.
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
+| `DATABASE_URL` | *(none)* | PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/sapphire`). If unset, SQLite is used. |
 | `SAPPHIRE_PASSWORD` | *(none)* | Admin password. Without it the app is read-only. |
 | `SAPPHIRE_WATERMARK_ENABLED` | `true` | Set to `false` to disable watermarking entirely. Other protection layers (canvas rendering, encrypted delivery, tile fragmentation) remain active. |
 | `SAPPHIRE_WATERMARK_TEXT` | `PROTECTED` | Text overlaid on images in non-downloadable galleries for guests. |
@@ -139,7 +163,7 @@ Admins bypass all protection layers and can always download images directly.
 ## Tech Stack
 
 - [Next.js 16](https://nextjs.org/) (App Router)
-- [SQLite](https://www.sqlite.org/) via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) + [Drizzle ORM](https://orm.drizzle.team/)
+- [SQLite](https://www.sqlite.org/) via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) or [PostgreSQL](https://www.postgresql.org/) via [pg](https://node-postgres.com/) + [Drizzle ORM](https://orm.drizzle.team/)
 - [shadcn/ui](https://ui.shadcn.com/) (Radix primitives + Tailwind CSS v4)
 - [sharp](https://sharp.pixelplumbing.com/) for image processing
 - [@dnd-kit](https://dndkit.com/) for drag-and-drop
@@ -180,8 +204,9 @@ src/
 │   └── rich-text-*.tsx     # Markdown editor (textarea) / viewer (renderer)
 ├── lib/
 │   ├── db/                 # Database schema & connection
-│   │   ├── schema.ts       # Drizzle schema (categories, albums, photos, siteSettings)
-│   │   └── index.ts        # SQLite singleton + runtime migrations
+│   │   ├── schema.ts       # Drizzle schema (SQLite + PostgreSQL dual definitions)
+│   │   ├── config.ts       # Database driver detection (DATABASE_URL)
+│   │   └── index.ts        # Database connection + runtime migrations
 │   ├── i18n/               # Translations (en, zh, ja)
 │   ├── auth.ts             # Server-side auth (HMAC tokens)
 │   ├── auth-context.tsx    # Client-side auth state
@@ -206,7 +231,7 @@ data/                       # Runtime data (gitignored)
 
 **REST API** — No tRPC or server actions. All API routes use `NextRequest`/`NextResponse`. Auth is cookie-based HMAC tokens gated by `SAPPHIRE_PASSWORD`.
 
-**Database** — SQLite with WAL mode. Schema changes go through Drizzle Kit migrations (`drizzle/`) and runtime column additions (`db/index.ts`). Booleans are stored as `integer` (0/1).
+**Database** — SQLite (default) or PostgreSQL. Set `DATABASE_URL` in `.env` to switch to PostgreSQL. Schema changes go through Drizzle Kit migrations (`drizzle/` for SQLite, `drizzle-pg/` for PostgreSQL) and runtime column additions (`db/index.ts`). SQLite uses WAL mode. Booleans are stored as `integer` (0/1) in SQLite and `boolean` in PostgreSQL.
 
 **Markdown** — Notes and descriptions are stored as plain Markdown text. A custom renderer in `rich-text-viewer.tsx` converts Markdown to HTML. No external Markdown library is used. Legacy Plate.js JSON content is auto-converted via `plate-utils.ts`.
 
@@ -226,8 +251,9 @@ data/                       # Runtime data (gitignored)
 | `npm run db:generate` | Generate Drizzle migrations from schema changes |
 | `npm run db:migrate` | Apply database migrations |
 | `npm run db:studio` | Open Drizzle Studio (DB browser) |
+| `npm run setup` | Create `.env` (if missing) and run database migrations |
 | `npm run reset` | Delete all data (database + photos) and start fresh |
-| `npm run backup` | create a zip archive at backups/sapphire-backup-YYYY-MM-DD-HHmmss.zip. |
+| `npm run backup` | Create a zip archive at `backups/sapphire-backup-YYYY-MM-DD-HHmmss.zip` (SQLite only) |
 
 ### Adding a New Feature
 
@@ -240,4 +266,7 @@ data/                       # Runtime data (gitignored)
 7. Build the UI in `src/components/` and page in `src/app/`
 
 ## License
-GPL-3.0 license
+
+This project is licensed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
+
+See [LICENSE](LICENSE) for the full text.

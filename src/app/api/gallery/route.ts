@@ -31,8 +31,8 @@ export async function GET() {
     .all();
 
   const result = rows
-    .filter((row) => authed || (!row.isPrivate))
-    .map((row) => {
+    .filter((row: any) => authed || (!row.isPrivate))
+    .map((row: any) => {
       const coverThumbnailUrl = row.coverPhotoId
         ? signImageUrl(`/api/images/thumbnails/${row.coverPhotoId}.webp`)
         : null;

@@ -34,7 +34,7 @@ if [ "$NODE_VER" -lt "$MIN_NODE" ]; then
   fail "Node.js $MIN_NODE+ required (found $(node -v))."
 fi
 
-# ---------- mode ----------
+# ---------- parse args ----------
 
 MODE="install"
 PORT=3000
@@ -44,13 +44,15 @@ for arg in "$@"; do
     --port=*)    PORT="${arg#*=}" ;;
     --dir=*)     DIR="${arg#*=}" ;;
     --help|-h)
-      echo "Usage: install.sh [OPTIONS]"
-      echo ""
-      echo "Options:"
-      echo "  --update, -u     Update an existing installation"
-      echo "  --dir=NAME       Directory name (default: sapphire)"
-      echo "  --port=PORT      Port for production server (default: 3000)"
-      echo "  -h, --help       Show this help"
+      cat <<EOF
+Usage: install.sh [OPTIONS]
+
+Options:
+  --update, -u     Update an existing installation
+  --dir=NAME       Directory name (default: sapphire)
+  --port=PORT      Port for production server (default: 3000)
+  -h, --help       Show this help
+EOF
       exit 0
       ;;
   esac
@@ -69,33 +71,16 @@ if [ "$MODE" = "install" ]; then
   cd "$DIR"
 
   info "Installing dependencies..."
-  npm install --production=false
+  npm ci --ignore-scripts 2>/dev/null || npm install
+  npm rebuild 2>/dev/null || true
 
-  info "Setting up database..."
-  npx drizzle-kit generate 2>/dev/null || true
-  npx drizzle-kit migrate
+  info "Setting up environment and database..."
+  npm run setup
 
   info "Building for production..."
   npm run build
 
-  # Create .env if missing
-  if [ ! -f .env ]; then
-    cat > .env << 'ENVEOF'
-SAPPHIRE_PASSWORD=changeme
-
-# Watermark settings (applied to non-downloadable galleries for guests)
-SAPPHIRE_WATERMARK_ENABLED=true
-SAPPHIRE_WATERMARK_TEXT=PROTECTED
-SAPPHIRE_WATERMARK_OPACITY=0.3
-SAPPHIRE_WATERMARK_COLOR=white
-SAPPHIRE_WATERMARK_STYLE=diagonal
-
-# Image URL token expiration (seconds)
-# SAPPHIRE_IMAGE_TOKEN_TTL=3600
-ENVEOF
-    yellow "Created .env with default password 'changeme' — change it!"
-  fi
-
+  yellow "Default password is 'changeme' — edit .env to change it!"
   echo ""
   green "Sapphire installed successfully!"
   echo ""
@@ -112,7 +97,6 @@ elif [ "$MODE" = "update" ]; then
   green "Updating Sapphire..."
 
   if [ ! -f "package.json" ] || ! grep -q '"sapphire"' package.json 2>/dev/null; then
-    # Try entering the directory
     if [ -d "$DIR" ]; then
       cd "$DIR"
     fi
@@ -131,7 +115,8 @@ elif [ "$MODE" = "update" ]; then
   git pull origin "$BRANCH"
 
   info "Installing dependencies..."
-  npm install --production=false
+  npm ci --ignore-scripts 2>/dev/null || npm install
+  npm rebuild 2>/dev/null || true
 
   info "Running database migrations..."
   npx drizzle-kit generate 2>/dev/null || true
