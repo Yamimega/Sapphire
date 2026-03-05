@@ -40,7 +40,62 @@ export function replaceConnection(newConn: Database.Database) {
   try { old?.close(); } catch { /* already closed */ }
 }
 
-// Migrations: add columns if missing
+// Bootstrap: create tables if they don't exist (fresh deployment)
+sqlite.exec(`CREATE TABLE IF NOT EXISTS categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  cover_image_path TEXT,
+  display_order INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_category_display_order ON categories(display_order)`);
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS albums (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  date TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  display_order INTEGER NOT NULL,
+  cover_photo_id TEXT,
+  password TEXT NOT NULL DEFAULT '',
+  is_private INTEGER NOT NULL DEFAULT 0,
+  allow_download INTEGER NOT NULL DEFAULT 1,
+  is_protected INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_album_date ON albums(date)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_album_display_order ON albums(display_order)`);
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS photos (
+  id TEXT PRIMARY KEY,
+  album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  filepath TEXT NOT NULL,
+  thumbnail_path TEXT NOT NULL,
+  content_hash TEXT NOT NULL DEFAULT '',
+  blur_data_url TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  caption TEXT NOT NULL DEFAULT '',
+  exif_data TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL,
+  uploaded_at TEXT NOT NULL
+)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_photo_album_id ON photos(album_id)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_photo_album_order ON photos(album_id, display_order)`);
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS site_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+)`);
+
+// Migrations: add columns if missing (for upgrades from older versions)
 try {
   const albumCols = sqlite.prepare("PRAGMA table_info(albums)").all() as { name: string }[];
   const colNames = new Set(albumCols.map((c) => c.name));
@@ -87,19 +142,8 @@ try {
     } catch { /* column may already exist */ }
   }
 
-  // Create categories table if not exists
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS categories (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    cover_image_path TEXT,
-    display_order INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`);
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_category_display_order ON categories(display_order)`);
 } catch {
-  // Table may not exist yet (first run), drizzle-kit push will create it
+  // Migrations failed — tables were just created, so columns already exist
 }
 
 let _db = drizzle(sqlite, { schema });
