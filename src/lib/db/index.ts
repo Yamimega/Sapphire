@@ -3,27 +3,42 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import path from "path";
 import fs from "fs";
 import * as schema from "./schema";
+import { DATA_DIR, UPLOADS_DIR, UPLOAD_SUBDIRS } from "../constants";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "database.db");
+export const DB_PATH = path.join(DATA_DIR, "database.db");
 
 // Ensure data directory exists
-fs.mkdirSync(path.join(DATA_DIR, "uploads", "originals"), { recursive: true });
-fs.mkdirSync(path.join(DATA_DIR, "uploads", "thumbnails"), { recursive: true });
-fs.mkdirSync(path.join(DATA_DIR, "uploads", "favicon"), { recursive: true });
-fs.mkdirSync(path.join(DATA_DIR, "uploads", "covers"), { recursive: true });
+for (const dir of UPLOAD_SUBDIRS) {
+  fs.mkdirSync(path.join(UPLOADS_DIR, dir), { recursive: true });
+}
+
+/** Open a new SQLite connection with standard pragmas */
+export function openConnection(dbPath: string = DB_PATH): Database.Database {
+  const conn = new Database(dbPath);
+  conn.pragma("journal_mode = WAL");
+  conn.pragma("foreign_keys = ON");
+  conn.pragma("busy_timeout = 5000");
+  return conn;
+}
 
 // Use a singleton to avoid "database is locked" during build with multiple workers
 const globalForDb = globalThis as unknown as { _sqlite: Database.Database | undefined };
 
 if (!globalForDb._sqlite) {
-  globalForDb._sqlite = new Database(DB_PATH);
-  globalForDb._sqlite.pragma("journal_mode = WAL");
-  globalForDb._sqlite.pragma("foreign_keys = ON");
-  globalForDb._sqlite.pragma("busy_timeout = 5000");
+  globalForDb._sqlite = openConnection();
 }
 
-const sqlite = globalForDb._sqlite;
+let sqlite = globalForDb._sqlite;
+
+/** Replace the live DB connection (used by backup import). Closes the old connection. */
+export function replaceConnection(newConn: Database.Database) {
+  const old = globalForDb._sqlite;
+  globalForDb._sqlite = newConn;
+  sqlite = newConn;
+  _db = drizzle(newConn, { schema });
+  // Close old connection after swap so in-flight reads don't hit a closed DB
+  try { old?.close(); } catch { /* already closed */ }
+}
 
 // Migrations: add columns if missing
 try {
@@ -87,5 +102,7 @@ try {
   // Table may not exist yet (first run), drizzle-kit push will create it
 }
 
-export const db = drizzle(sqlite, { schema });
-export { sqlite };
+let _db = drizzle(sqlite, { schema });
+
+// Use getters so backup import can hot-swap the connection
+export { sqlite, _db as db };

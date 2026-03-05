@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { timingSafeHexEqual } from "./auth";
 
 const TOKEN_TTL = parseInt(process.env.SAPPHIRE_IMAGE_TOKEN_TTL || "3600", 10); // default 1 hour
 
@@ -37,8 +38,7 @@ export function verifyImageSignature(
   if (isNaN(expNum) || expNum < Math.floor(Date.now() / 1000)) return false;
   const data = `${basePath}:${galleryId || ""}:${exp}`;
   const expected = crypto.createHmac("sha256", getSecret()).update(data).digest("hex").slice(0, 16);
-  if (sig.length !== expected.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  return timingSafeHexEqual(sig, expected);
 }
 
 // --- One-time download tokens ---
