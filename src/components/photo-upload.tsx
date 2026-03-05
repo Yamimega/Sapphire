@@ -56,43 +56,51 @@ export function PhotoUpload({ albumId, onUploadComplete }: PhotoUploadProps) {
   const uploadFiles = useCallback(async () => {
     if (pendingFiles.length === 0) return;
     setIsUploading(true);
-    setUploadProgress({ current: 0, total: pendingFiles.length });
+    const total = pendingFiles.length;
+    setUploadProgress({ current: 0, total });
 
-    try {
-      // Upload in batches of 5
-      const batchSize = 5;
-      let uploaded = 0;
+    let uploaded = 0;
+    let failed = 0;
 
-      for (let i = 0; i < pendingFiles.length; i += batchSize) {
-        const batch = pendingFiles.slice(i, i + batchSize);
+    // Upload individual files with concurrency limit of 3
+    const concurrency = 3;
+    const queue = [...pendingFiles];
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const pf = queue.shift();
+        if (!pf) break;
         const formData = new FormData();
-        for (const { file } of batch) {
-          formData.append("files", file);
+        formData.append("files", pf.file);
+
+        try {
+          const res = await fetch(`/api/gallery/${albumId}/photos`, {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Upload failed");
+          }
+        } catch {
+          failed++;
         }
-
-        const res = await fetch(`/api/gallery/${albumId}/photos`, {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Upload failed");
-        }
-
-        uploaded += batch.length;
-        setUploadProgress({ current: uploaded, total: pendingFiles.length });
+        uploaded++;
+        setUploadProgress({ current: uploaded, total });
       }
+    };
 
-      toast.success(t("upload.success", { count: pendingFiles.length }));
-      clearAll();
-      onUploadComplete();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("upload.failed"));
-    } finally {
-      setIsUploading(false);
-      setUploadProgress({ current: 0, total: 0 });
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    if (failed > 0) {
+      toast.error(t("upload.partialFail", { failed }));
+    } else {
+      toast.success(t("upload.success", { count: total }));
     }
+    clearAll();
+    onUploadComplete();
+    setIsUploading(false);
+    setUploadProgress({ current: 0, total: 0 });
   }, [pendingFiles, albumId, onUploadComplete, clearAll, t]);
 
   const handleDrop = useCallback(

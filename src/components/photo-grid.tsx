@@ -13,6 +13,10 @@ interface PhotoGridProps {
   currentCoverId?: string | null;
   /** When true, images are rendered on canvas with protection */
   protected?: boolean;
+  /** Selection mode */
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (photoId: string) => void;
 }
 
 const GAP = 4;
@@ -28,7 +32,7 @@ function useRowHeight() {
   return height;
 }
 
-export function PhotoGrid({ photos, onPhotoClick, onPhotoDelete, onSetCover, onEditCaption, currentCoverId, protected: isProtected }: PhotoGridProps) {
+export function PhotoGrid({ photos, onPhotoClick, onPhotoDelete, onSetCover, onEditCaption, currentCoverId, protected: isProtected, selectable, selectedIds, onToggleSelect }: PhotoGridProps) {
   const rowHeight = useRowHeight();
 
   return (
@@ -47,12 +51,14 @@ export function PhotoGrid({ photos, onPhotoClick, onPhotoDelete, onSetCover, onE
           >
             <PhotoTile
               photo={photo}
-              onClick={() => onPhotoClick(index)}
-              onDelete={onPhotoDelete ? () => onPhotoDelete(photo.id) : undefined}
-              onSetCover={onSetCover ? () => onSetCover(photo.id) : undefined}
-              onEditCaption={onEditCaption ? () => onEditCaption(photo.id) : undefined}
+              onClick={() => selectable && onToggleSelect ? onToggleSelect(photo.id) : onPhotoClick(index)}
+              onDelete={!selectable && onPhotoDelete ? () => onPhotoDelete(photo.id) : undefined}
+              onSetCover={!selectable && onSetCover ? () => onSetCover(photo.id) : undefined}
+              onEditCaption={!selectable && onEditCaption ? () => onEditCaption(photo.id) : undefined}
               isCover={photo.contentHash === currentCoverId}
               protected={isProtected}
+              selectable={selectable}
+              selected={selectable && selectedIds?.has(photo.id)}
             />
           </div>
         );

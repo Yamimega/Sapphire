@@ -6,6 +6,10 @@ import archiver from "archiver";
 import fs from "fs";
 import { PassThrough, Readable } from "stream";
 
+// App Router route segment config: no size/time limits for large backup streaming
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 export async function GET() {
   if (!(await isAuthenticated())) return requireAuthResponse();
 

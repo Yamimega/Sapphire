@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 const TILE_GRID = 3; // 3x3 = 9 tiles for full-size images
+// Most mobile browsers limit canvas area to ~16M pixels; cap to be safe
+const MAX_CANVAS_AREA = 4096 * 4096;
 
 interface ProtectedImageProps {
   src: string;
@@ -74,6 +76,10 @@ export function ProtectedImage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // For tiled mode, store the natural aspect ratio so CSS can size correctly
+  const [aspect, setAspect] = useState<number | null>(
+    imageWidth && imageHeight ? imageWidth / imageHeight : null
+  );
 
   // Override toDataURL/toBlob on the canvas to prevent extraction
   const lockCanvas = useCallback((canvas: HTMLCanvasElement) => {
@@ -107,12 +113,20 @@ export function ProtectedImage({
       // Use container dimensions for "cover" rendering
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      const w = rect.width;
+      const h = rect.height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
 
       const ctx = canvas.getContext("2d")!;
-      ctx.scale(dpr, dpr);
-      drawCover(ctx, bitmap, rect.width, rect.height);
+      // Draw cover: crop to fill the container
+      const scale = Math.max(w / bitmap.width, h / bitmap.height);
+      const sw = w / scale;
+      const sh = h / scale;
+      const sx = (bitmap.width - sw) / 2;
+      const sy = (bitmap.height - sh) / 2;
+      ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w * dpr, h * dpr);
+
       bitmap.close();
       setLoading(false);
     } catch (err) {
@@ -129,9 +143,19 @@ export function ProtectedImage({
 
       lockCanvas(canvas);
 
-      // Set canvas to full image size
-      canvas.width = imageWidth;
-      canvas.height = imageHeight;
+      // Downscale canvas if image exceeds mobile canvas limits
+      let cw = imageWidth;
+      let ch = imageHeight;
+      const area = cw * ch;
+      if (area > MAX_CANVAS_AREA) {
+        const ratio = Math.sqrt(MAX_CANVAS_AREA / area);
+        cw = Math.floor(cw * ratio);
+        ch = Math.floor(ch * ratio);
+      }
+
+      canvas.width = cw;
+      canvas.height = ch;
+      setAspect(cw / ch);
       const ctx = canvas.getContext("2d")!;
 
       const tileW = Math.ceil(imageWidth / TILE_GRID);
@@ -160,11 +184,19 @@ export function ProtectedImage({
 
       if (signal.aborted) return;
 
-      // Draw each tile at its position
+      // Scale factors if canvas was downscaled
+      const scaleX = cw / imageWidth;
+      const scaleY = ch / imageHeight;
+
+      // Draw each tile at its position, scaled to canvas size
       for (const result of results) {
         if (result.status === "fulfilled") {
           const { row, col, bitmap } = result.value;
-          ctx.drawImage(bitmap, col * tileW, row * tileH);
+          const dx = col * tileW * scaleX;
+          const dy = row * tileH * scaleY;
+          const dw = bitmap.width * scaleX;
+          const dh = bitmap.height * scaleY;
+          ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, dx, dy, dw, dh);
           bitmap.close();
         }
       }
@@ -190,7 +222,7 @@ export function ProtectedImage({
     );
   }
 
-  // Tiled mode (lightbox): canvas maintains its natural aspect ratio via CSS
+  // Tiled mode (lightbox): use aspect ratio to size the canvas properly via CSS
   if (tiled) {
     return (
       <>
@@ -202,7 +234,12 @@ export function ProtectedImage({
         <canvas
           ref={canvasRef}
           className={cn(className, loading && "hidden")}
-          style={style}
+          style={{
+            ...style,
+            // Let CSS constrain via max-w/max-h from className, use aspect-ratio for proper fit
+            ...(aspect ? { aspectRatio: `${aspect}` } : {}),
+            objectFit: "contain",
+          }}
           onContextMenu={preventInteraction}
           onDragStart={preventInteraction}
           aria-label={alt}
@@ -223,24 +260,9 @@ export function ProtectedImage({
       {loading && <div className="absolute inset-0 animate-pulse bg-muted" />}
       <canvas
         ref={canvasRef}
-        className={cn("h-full w-full", loading && "invisible")}
+        className={cn("absolute inset-0 h-full w-full", loading && "invisible")}
         aria-label={alt}
       />
     </div>
   );
-}
-
-/** Draw image to fill canvas (crop to cover) */
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  img: ImageBitmap,
-  displayW: number,
-  displayH: number
-) {
-  const scale = Math.max(displayW / img.width, displayH / img.height);
-  const sw = displayW / scale;
-  const sh = displayH / scale;
-  const sx = (img.width - sw) / 2;
-  const sy = (img.height - sh) / 2;
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, displayW * (window.devicePixelRatio || 1), displayH * (window.devicePixelRatio || 1));
 }

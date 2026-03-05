@@ -49,7 +49,8 @@ export default function SettingsPage() {
   const { t } = useTranslation();
   const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [exporting, setExporting] = useState(false);
+
+
   const [importing, setImporting] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -117,26 +118,12 @@ export default function SettingsPage() {
     }
   };
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const res = await fetch("/api/backup/export");
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download =
-        res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") ??
-        "sapphire-backup.zip";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(t("settings.exportSuccess"));
-    } catch {
-      toast.error(t("settings.exportFailed"));
-    } finally {
-      setExporting(false);
-    }
+  const handleExport = () => {
+    // Direct navigation lets the browser stream the download natively
+    // without buffering the entire archive in JS memory (which fails for large backups).
+    // Auth cookie is sent automatically with the navigation.
+    window.location.href = "/api/backup/export";
+    toast.success(t("settings.exportSuccess"));
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -387,9 +374,9 @@ export default function SettingsPage() {
               <div className="rounded-lg border p-4">
                 <h4 className="mb-1 text-sm font-medium">{t("settings.exportTitle")}</h4>
                 <p className="mb-3 text-xs text-muted-foreground">{t("settings.exportDesc")}</p>
-                <Button onClick={handleExport} disabled={exporting} size="sm">
+                <Button onClick={handleExport} size="sm">
                   <Download className="mr-2 h-4 w-4" />
-                  {exporting ? t("settings.exporting") : t("settings.exportBtn")}
+                  {t("settings.exportBtn")}
                 </Button>
               </div>
               <div className="rounded-lg border p-4">
