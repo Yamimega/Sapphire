@@ -37,6 +37,7 @@ next-env.d.ts
 
 # app data (runtime database and uploads)
 /data/
+/backups/
 
 # testing
 /coverage

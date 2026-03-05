@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MoreVertical, Trash2, ImageIcon, MessageSquare } from "lucide-react";
+import { MoreVertical, Trash2, ImageIcon, MessageSquare, Check } from "lucide-react";
 import type { PhotoWithUrls } from "@/types";
 import { useTranslation } from "@/lib/i18n/context";
 import { BlobImage } from "@/components/blob-image";
@@ -23,9 +23,12 @@ interface PhotoTileProps {
   isCover?: boolean;
   /** When true, render on canvas with protection (non-downloadable gallery for guests) */
   protected?: boolean;
+  /** Selection mode */
+  selectable?: boolean;
+  selected?: boolean;
 }
 
-export function PhotoTile({ photo, onClick, onDelete, onSetCover, onEditCaption, isCover, protected: isProtected }: PhotoTileProps) {
+export function PhotoTile({ photo, onClick, onDelete, onSetCover, onEditCaption, isCover, protected: isProtected, selectable, selected }: PhotoTileProps) {
   const { t } = useTranslation();
   const aspect = (photo.width && photo.height) ? photo.width / photo.height : 1;
 
@@ -55,8 +58,19 @@ export function PhotoTile({ photo, onClick, onDelete, onSetCover, onEditCaption,
             />
           )}
           <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/10" />
+          {selectable && (
+            <div className={`absolute inset-0 transition-colors duration-150 ${selected ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`} />
+          )}
         </button>
       </div>
+      {/* Selection checkbox */}
+      {selectable && (
+        <div className="absolute top-1 left-1">
+          <div className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors ${selected ? "border-primary bg-primary text-primary-foreground" : "border-white/80 bg-black/30"}`}>
+            {selected && <Check className="h-3.5 w-3.5" />}
+          </div>
+        </div>
+      )}
       {/* Badges */}
       <div className="absolute bottom-1 left-1 flex gap-1">
         {isCover && (

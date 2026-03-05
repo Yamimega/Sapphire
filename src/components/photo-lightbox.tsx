@@ -476,7 +476,7 @@ export function PhotoLightbox({
                     tiled
                     imageWidth={photo.width}
                     imageHeight={photo.height}
-                    className="max-h-[calc(100vh-4rem)] max-w-[calc(100vw-1rem)] md:max-h-[calc(100vh-8rem)] md:max-w-[calc(100vw-2rem)] select-none transition-transform duration-150 ease-out"
+                    className="max-h-[calc(100vh-4rem)] max-w-[calc(100vw-1rem)] md:max-h-[calc(100vh-8rem)] md:max-w-[calc(100vw-2rem)] h-auto w-auto select-none transition-transform duration-150 ease-out"
                     style={{
                       transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                     }}

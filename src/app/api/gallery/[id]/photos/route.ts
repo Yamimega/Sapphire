@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { albums, photos } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
-import { generateId, formatDatetime, isAcceptedMimeType, sha256 } from "@/lib/server-utils";
+import { generateId, formatDatetime, isAcceptedMimeType, sha256, deletePhotoFiles } from "@/lib/server-utils";
 import { MAX_FILE_SIZE, ORIGINALS_DIR, THUMBNAILS_DIR, THUMBNAIL_WIDTH } from "@/lib/constants";
 import { isAuthenticated, requireAuthResponse, timingSafeHexEqual } from "@/lib/auth";
 import { signImageUrl } from "@/lib/image-token";
@@ -178,42 +178,65 @@ export async function POST(request: NextRequest, { params }: Params) {
     const originalFilename = `${contentHash}.jpg`;
     const thumbnailFilename = `${contentHash}.webp`;
 
-    // Get metadata and EXIF from original buffer
-    const metadata = await sharp(buffer).metadata();
+    // Decode once, reuse for all operations
+    const pipeline = sharp(buffer);
+    const metadata = await pipeline.metadata();
     const exifInfo = extractExif(metadata);
 
-    // Save original — skip conversion if already JPEG
+    // Run thumbnail, blur, and original conversion concurrently
     const originalPath = path.join(ORIGINALS_DIR, originalFilename);
+    const thumbnailDest = path.join(THUMBNAILS_DIR, thumbnailFilename);
+    const originalExists = fs.existsSync(originalPath);
+    const thumbExists = fs.existsSync(thumbnailDest);
+
+    const tasks: Promise<void>[] = [];
     let savedSize = file.size;
-    if (!fs.existsSync(originalPath)) {
+
+    // Original: save or convert
+    if (!originalExists) {
       if (isJpeg) {
         fs.writeFileSync(originalPath, buffer);
         savedSize = buffer.length;
       } else {
-        const jpegBuffer = await sharp(buffer)
-          .keepMetadata()
-          .jpeg({ quality: 92, mozjpeg: true })
-          .toBuffer();
-        fs.writeFileSync(originalPath, jpegBuffer);
-        savedSize = jpegBuffer.length;
+        tasks.push(
+          sharp(buffer)
+            .keepMetadata()
+            .jpeg({ quality: 92, mozjpeg: true })
+            .toBuffer()
+            .then((buf) => {
+              fs.writeFileSync(originalPath, buf);
+              savedSize = buf.length;
+            })
+        );
       }
     } else {
       savedSize = fs.statSync(originalPath).size;
     }
 
-    // Generate thumbnail (may already exist)
-    const thumbnailPath = path.join(THUMBNAILS_DIR, thumbnailFilename);
-    if (!fs.existsSync(thumbnailPath)) {
-      const thumbnailBuffer = await sharp(buffer)
-        .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toBuffer();
-      fs.writeFileSync(thumbnailPath, thumbnailBuffer);
+    // Thumbnail
+    if (!thumbExists) {
+      tasks.push(
+        sharp(buffer)
+          .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer()
+          .then((buf) => { fs.writeFileSync(thumbnailDest, buf); })
+      );
     }
 
-    // Generate blur placeholder
-    const blurBuffer = await sharp(buffer).resize(10).webp({ quality: 20 }).toBuffer();
-    const blurDataUrl = `data:image/webp;base64,${blurBuffer.toString("base64")}`;
+    // Blur placeholder
+    let blurDataUrl = "";
+    tasks.push(
+      sharp(buffer)
+        .resize(10)
+        .webp({ quality: 20 })
+        .toBuffer()
+        .then((buf) => {
+          blurDataUrl = `data:image/webp;base64,${buf.toString("base64")}`;
+        })
+    );
+
+    await Promise.all(tasks);
 
     const photoId = generateId();
     const exifJson = Object.keys(exifInfo).length > 0 ? JSON.stringify(exifInfo) : "";
@@ -253,4 +276,38 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({ photos: created, skippedDupes }, { status: 201 });
+}
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  if (!(await isAuthenticated())) return requireAuthResponse();
+  const { id } = await params;
+  const album = db.select().from(albums).where(eq(albums.id, id)).get();
+  if (!album) {
+    return NextResponse.json({ error: "Gallery not found" }, { status: 404 });
+  }
+
+  const body = await request.json();
+  const photoIds: string[] = body.photoIds;
+  if (!Array.isArray(photoIds) || photoIds.length === 0) {
+    return NextResponse.json({ error: "No photo IDs provided" }, { status: 400 });
+  }
+
+  // Fetch all photos that belong to this album and match the IDs
+  const albumPhotos = db
+    .select()
+    .from(photos)
+    .where(eq(photos.albumId, id))
+    .all();
+  const albumPhotoMap = new Map(albumPhotos.map((p) => [p.id, p]));
+
+  let deleted = 0;
+  for (const photoId of photoIds) {
+    const photo = albumPhotoMap.get(photoId);
+    if (!photo) continue;
+    deletePhotoFiles(photo);
+    db.delete(photos).where(eq(photos.id, photoId)).run();
+    deleted++;
+  }
+
+  return NextResponse.json({ deleted });
 }

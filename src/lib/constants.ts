@@ -6,7 +6,7 @@ export const ORIGINALS_DIR = path.join(UPLOADS_DIR, "originals");
 export const THUMBNAILS_DIR = path.join(UPLOADS_DIR, "thumbnails");
 export const COVERS_DIR = path.join(UPLOADS_DIR, "covers");
 
-export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 export const THUMBNAIL_WIDTH = 400;
 
 export const ACCEPTED_MIME_TYPES = [

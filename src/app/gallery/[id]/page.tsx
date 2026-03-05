@@ -43,6 +43,8 @@ import {
   Pencil,
   Check,
   FileText,
+  CheckSquare,
+  X,
 } from "lucide-react";
 import type { Gallery, PhotoWithUrls } from "@/types";
 import { toast } from "sonner";
@@ -75,6 +77,10 @@ export default function GalleryDetailPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [captionDialog, setCaptionDialog] = useState<{ photoId: string; value: string } | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const fetchGallery = useCallback(async () => {
     try {
@@ -228,6 +234,50 @@ export default function GalleryDetailPage() {
     }
   };
 
+  const toggleSelectPhoto = useCallback((photoId: string) => {
+    setSelectedPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) next.delete(photoId);
+      else next.add(photoId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedPhotoIds.size === photos.length) {
+      setSelectedPhotoIds(new Set());
+    } else {
+      setSelectedPhotoIds(new Set(photos.map((p) => p.id)));
+    }
+  }, [photos, selectedPhotoIds.size]);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedPhotoIds(new Set());
+  }, []);
+
+  const handleBatchDelete = async () => {
+    if (selectedPhotoIds.size === 0) return;
+    setBatchDeleting(true);
+    try {
+      const res = await fetch(`/api/gallery/${galleryId}/photos`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds: Array.from(selectedPhotoIds) }),
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      const data = await res.json();
+      toast.success(t("gallery.batchDeleted", { count: data.deleted }));
+      setBatchDeleteOpen(false);
+      exitSelectMode();
+      fetchPhotos();
+    } catch {
+      toast.error(t("gallery.failedDeletePhoto"));
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div>
@@ -315,6 +365,32 @@ export default function GalleryDetailPage() {
       <div className="flex flex-col gap-6 lg:flex-row">
         {/* Left column: Photos */}
         <div className="min-w-0 flex-1">
+          {/* Selection toolbar */}
+          {selectMode && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border bg-card p-2">
+              <Button variant="ghost" size="sm" onClick={exitSelectMode}>
+                <X className="mr-1 h-4 w-4" />
+                {t("gallery.cancelSelect")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleSelectAll}>
+                <CheckSquare className="mr-1 h-4 w-4" />
+                {selectedPhotoIds.size === photos.length ? t("gallery.deselectAll") : t("gallery.selectAll")}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {t("gallery.selectedCount", { count: selectedPhotoIds.size })}
+              </span>
+              <div className="flex-1" />
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={selectedPhotoIds.size === 0}
+                onClick={() => setBatchDeleteOpen(true)}
+              >
+                <Trash2 className="mr-1 h-4 w-4" />
+                {t("gallery.deleteSelected", { count: selectedPhotoIds.size })}
+              </Button>
+            </div>
+          )}
           {photos.length === 0 ? (
             <EmptyState
               icon={ImageIcon}
@@ -325,11 +401,14 @@ export default function GalleryDetailPage() {
             <PhotoGrid
               photos={photos}
               onPhotoClick={(index) => setLightboxIndex(index)}
-              onPhotoDelete={authenticated ? (id) => setDeletePhotoId(id) : undefined}
-              onSetCover={authenticated ? handleSetCover : undefined}
-              onEditCaption={authenticated ? handleEditCaption : undefined}
+              onPhotoDelete={authenticated && !selectMode ? (id) => setDeletePhotoId(id) : undefined}
+              onSetCover={authenticated && !selectMode ? handleSetCover : undefined}
+              onEditCaption={authenticated && !selectMode ? handleEditCaption : undefined}
               currentCoverId={gallery.coverPhotoId}
               protected={!allowDownload && !authenticated}
+              selectable={selectMode}
+              selectedIds={selectedPhotoIds}
+              onToggleSelect={toggleSelectPhoto}
             />
           )}
         </div>
@@ -349,6 +428,16 @@ export default function GalleryDetailPage() {
                 <Upload className="mr-2 h-4 w-4" />
                 {t("gallery.uploadPhotos")}
               </Button>
+              {photos.length > 0 && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => setSelectMode(!selectMode)}
+                >
+                  <CheckSquare className="mr-2 h-4 w-4" />
+                  {t("gallery.selectPhotos")}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="w-full justify-start"
@@ -573,6 +662,24 @@ export default function GalleryDetailPage() {
             <AlertDialogCancel>{t("delete.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeletePhoto} className="bg-destructive text-white">
               {t("delete.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch Delete Photos Confirmation */}
+      <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("gallery.batchDeleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("gallery.batchDeleteDesc", { count: selectedPhotoIds.size })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchDeleting}>{t("delete.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive text-white" disabled={batchDeleting}>
+              {batchDeleting ? t("gallery.deleting") : t("delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
