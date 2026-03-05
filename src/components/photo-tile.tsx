@@ -1,6 +1,5 @@
 "use client";
 
-import { AspectRatio } from "@/components/ui/aspect-ratio";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,13 +27,14 @@ interface PhotoTileProps {
 
 export function PhotoTile({ photo, onClick, onDelete, onSetCover, onEditCaption, isCover, protected: isProtected }: PhotoTileProps) {
   const { t } = useTranslation();
+  const aspect = (photo.width && photo.height) ? photo.width / photo.height : 1;
 
   return (
     <div className="group relative overflow-hidden rounded-lg shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <AspectRatio ratio={1}>
+      <div style={{ paddingBottom: `${100 / aspect}%` }} className="relative">
         <button
           onClick={onClick}
-          className="h-full w-full cursor-pointer touch-manipulation"
+          className="absolute inset-0 cursor-pointer touch-manipulation"
           aria-label={`View ${photo.filename}`}
         >
           {isProtected ? (
@@ -56,7 +56,7 @@ export function PhotoTile({ photo, onClick, onDelete, onSetCover, onEditCaption,
           )}
           <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/10" />
         </button>
-      </AspectRatio>
+      </div>
       {/* Badges */}
       <div className="absolute bottom-1 left-1 flex gap-1">
         {isCover && (
