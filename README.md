@@ -227,6 +227,7 @@ data/                       # Runtime data (gitignored)
 | `npm run db:migrate` | Apply database migrations |
 | `npm run db:studio` | Open Drizzle Studio (DB browser) |
 | `npm run reset` | Delete all data (database + photos) and start fresh |
+| `npm run backup` | create a zip archive at backups/sapphire-backup-YYYY-MM-DD-HHmmss.zip. |
 
 ### Adding a New Feature
 
@@ -239,5 +240,4 @@ data/                       # Runtime data (gitignored)
 7. Build the UI in `src/components/` and page in `src/app/`
 
 ## License
-
-MIT
+GPL-3.0
