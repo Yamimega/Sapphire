@@ -254,15 +254,26 @@ export function PhotoLightbox({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, close, goPrev, goNext, zoomIn, zoomOut, zoomReset, zoomFit, handleDownload]);
 
-  // Mouse wheel zoom
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+  // Mouse wheel zoom — use callback ref to attach non-passive listener (React onWheel is passive)
+  const zoomInRef = useRef(zoomIn);
+  const zoomOutRef = useRef(zoomOut);
+  zoomInRef.current = zoomIn;
+  zoomOutRef.current = zoomOut;
+
+  const wheelCleanup = useRef<(() => void) | null>(null);
+  const wheelContainerRef = useCallback((el: HTMLDivElement | null) => {
+    // Clean up previous listener
+    wheelCleanup.current?.();
+    wheelCleanup.current = null;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (e.deltaY < 0) zoomIn();
-      else zoomOut();
-    },
-    [zoomIn, zoomOut]
-  );
+      if (e.deltaY < 0) zoomInRef.current();
+      else zoomOutRef.current();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    wheelCleanup.current = () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   // Panning when zoomed
   const handleMouseDown = useCallback(
@@ -442,11 +453,11 @@ export function PhotoLightbox({
 
               {/* Image */}
               <div
+                ref={wheelContainerRef}
                 className={cn(
                   "flex items-center justify-center w-full h-full",
                   zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-default"
                 )}
-                onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}

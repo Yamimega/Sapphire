@@ -21,34 +21,53 @@ A self-hosted photo gallery organizer built with Next.js. Organize photos into g
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js 20+
-- npm
-
-### Install & Run
+### One-Line Install
 
 ```bash
-git clone https://github.com/your-username/sapphire.git
+curl -fsSL https://raw.githubusercontent.com/Yamimega/Sapphire/master/scripts/install.sh | bash
+```
+
+This clones the repo, installs dependencies, sets up the database, builds for production, and creates a default `.env` file. Then:
+
+```bash
 cd sapphire
+nano .env        # set your admin password
+npm start        # start on port 3000
+```
+
+### One-Line Update
+
+Run from inside the sapphire directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Yamimega/Sapphire/master/scripts/install.sh | bash -s -- --update
+```
+
+Options: `--dir=NAME` (directory name), `--port=PORT` (server port). Run with `--help` for details.
+
+### Manual Install
+
+Prerequisites: Node.js 20+, npm.
+
+```bash
+git clone https://github.com/Yamimega/Sapphire.git
+cd Sapphire
 npm install
+npm run db:generate
+npm run db:migrate
 ```
 
 Create a `.env` file:
 
 ```env
 SAPPHIRE_PASSWORD=your-secret-password
-
-# Watermark for non-downloadable galleries (optional)
-SAPPHIRE_WATERMARK_ENABLED=true
-SAPPHIRE_WATERMARK_TEXT=PROTECTED
-SAPPHIRE_WATERMARK_OPACITY=0.3
-SAPPHIRE_WATERMARK_COLOR=white
-SAPPHIRE_WATERMARK_SIZE=0
-SAPPHIRE_WATERMARK_SPACING=0
-SAPPHIRE_WATERMARK_STYLE=diagonal
-SAPPHIRE_IMAGE_TOKEN_TTL=3600
 ```
+
+```bash
+npm run build && npm start
+```
+
+Open [http://localhost:3000](http://localhost:3000).
 
 > Without `SAPPHIRE_PASSWORD`, the app runs in **read-only mode** — visitors can browse but cannot upload, edit, or delete anything.
 
@@ -75,25 +94,6 @@ SAPPHIRE_IMAGE_TOKEN_TTL=3600
 | `strip` | Semi-transparent bar at the bottom with centered text. Unobtrusive. |
 | `corner` | Small text in the bottom-right corner. Least intrusive. |
 | `cross` | Two diagonal lines of text forming an X pattern. Maximum coverage. |
-
-### Setup
-
-Set up the database and start the dev server:
-
-```bash
-npm run db:generate
-npm run db:migrate
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-### Production
-
-```bash
-npm run build
-npm start
-```
 
 ## Usage Guide
 
@@ -226,6 +226,7 @@ data/                       # Runtime data (gitignored)
 | `npm run db:generate` | Generate Drizzle migrations from schema changes |
 | `npm run db:migrate` | Apply database migrations |
 | `npm run db:studio` | Open Drizzle Studio (DB browser) |
+| `npm run reset` | Delete all data (database + photos) and start fresh |
 
 ### Adding a New Feature
 

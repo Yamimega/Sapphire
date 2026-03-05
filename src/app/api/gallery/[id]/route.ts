@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { albums, photos } from "@/lib/db/schema";
 import { eq, count } from "drizzle-orm";
 import { formatDatetime, hashAlbumPassword, deletePhotoFiles } from "@/lib/server-utils";
-import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
+import { isAuthenticated, requireAuthResponse, timingSafeHexEqual } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   // Password-protected gallery: visible but requires password to view content
   if (album.isProtected && album.password && !authed) {
     const albumAuth = request.cookies.get(`album-${id}`)?.value;
-    if (!albumAuth || albumAuth !== album.password) {
+    if (!albumAuth || !timingSafeHexEqual(albumAuth, album.password)) {
       return NextResponse.json(
         { error: "Password required", requirePassword: true },
         { status: 403 }

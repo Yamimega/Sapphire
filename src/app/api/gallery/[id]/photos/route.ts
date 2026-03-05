@@ -4,7 +4,7 @@ import { albums, photos } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
 import { generateId, formatDatetime, isAcceptedMimeType, sha256 } from "@/lib/server-utils";
 import { MAX_FILE_SIZE, ORIGINALS_DIR, THUMBNAILS_DIR, THUMBNAIL_WIDTH } from "@/lib/constants";
-import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
+import { isAuthenticated, requireAuthResponse, timingSafeHexEqual } from "@/lib/auth";
 import { signImageUrl } from "@/lib/image-token";
 import type { ExifInfo } from "@/types";
 import sharp from "sharp";
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   // Password-protected gallery: check cookie
   if (album.isProtected && album.password && !authed) {
     const albumAuth = request.cookies.get(`album-${id}`)?.value;
-    if (!albumAuth || albumAuth !== album.password) {
+    if (!albumAuth || !timingSafeHexEqual(albumAuth, album.password)) {
       return NextResponse.json({ error: "Password required" }, { status: 403 });
     }
   }

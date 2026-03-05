@@ -35,4 +35,6 @@ export const EXT_TO_MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+export const UPLOAD_SUBDIRS = ["originals", "thumbnails", "covers", "favicon"] as const;
+
 export const MAX_TIMELINE_THUMBNAILS = 3;
