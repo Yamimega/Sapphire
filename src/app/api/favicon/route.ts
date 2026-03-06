@@ -1,39 +1,25 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
 import path from "path";
-import { UPLOADS_DIR } from "@/lib/constants";
-
-const MIME_TYPES: Record<string, string> = {
-  ".ico": "image/x-icon",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-};
+import { EXT_TO_MIME } from "@/lib/constants";
+import { storage } from "@/lib/storage";
 
 export async function GET() {
-  const faviconDir = path.join(UPLOADS_DIR, "favicon");
+  const files = (await storage.list("favicon/")).filter((f) =>
+    /\.(ico|png|svg|jpg|jpeg|webp)$/i.test(f)
+  );
 
-  if (fs.existsSync(faviconDir)) {
-    const files = fs.readdirSync(faviconDir).filter((f) =>
-      /\.(ico|png|svg|jpg|jpeg|webp)$/i.test(f)
-    );
-
-    if (files.length > 0) {
-      const filePath = path.join(faviconDir, files[0]);
+  if (files.length > 0) {
+    const buffer = await storage.get(files[0]);
+    if (buffer) {
       const ext = path.extname(files[0]).toLowerCase();
-      const buffer = fs.readFileSync(filePath);
-
-      return new NextResponse(buffer, {
+      return new NextResponse(new Uint8Array(buffer), {
         headers: {
-          "Content-Type": MIME_TYPES[ext] ?? "image/png",
+          "Content-Type": EXT_TO_MIME[ext] ?? "image/png",
           "Cache-Control": "public, max-age=3600",
         },
       });
     }
   }
 
-  // Return 404 if no custom favicon
   return new NextResponse(null, { status: 404 });
 }

@@ -3,14 +3,13 @@ import { db } from "@/lib/db";
 import { albums, photos } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
 import { generateId, formatDatetime, isAcceptedMimeType, sha256, deletePhotoFiles } from "@/lib/server-utils";
-import { MAX_FILE_SIZE, ORIGINALS_DIR, THUMBNAILS_DIR, THUMBNAIL_WIDTH } from "@/lib/constants";
+import { MAX_FILE_SIZE, THUMBNAIL_WIDTH } from "@/lib/constants";
 import { isAuthenticated, requireAuthResponse, timingSafeHexEqual } from "@/lib/auth";
 import { signImageUrl } from "@/lib/image-token";
+import { storage } from "@/lib/storage";
 import type { ExifInfo } from "@/types";
 import sharp from "sharp";
 import exifReader from "exif-reader";
-import fs from "fs";
-import { writeFile } from "fs/promises";
 import path from "path";
 
 function extractExif(metadata: sharp.Metadata): ExifInfo {
@@ -185,10 +184,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     const metadata = await decoded.metadata();
     const exifInfo = extractExif(metadata);
 
-    const originalPath = path.join(ORIGINALS_DIR, originalFilename);
-    const thumbnailDest = path.join(THUMBNAILS_DIR, thumbnailFilename);
-    const originalExists = fs.existsSync(originalPath);
-    const thumbExists = fs.existsSync(thumbnailDest);
+    const originalKey = `originals/${originalFilename}`;
+    const thumbnailKey = `thumbnails/${thumbnailFilename}`;
+    const [originalExists, thumbExists] = await Promise.all([
+      storage.exists(originalKey),
+      storage.exists(thumbnailKey),
+    ]);
 
     const tasks: Promise<void>[] = [];
     let savedSize = file.size;
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Original: save or convert
     if (!originalExists) {
       if (isJpeg) {
-        tasks.push(writeFile(originalPath, buffer).then(() => { savedSize = buffer.length; }));
+        tasks.push(storage.put(originalKey, buffer).then(() => { savedSize = buffer.length; }));
       } else {
         tasks.push(
           decoded.clone()
@@ -204,13 +205,14 @@ export async function POST(request: NextRequest, { params }: Params) {
             .jpeg({ quality: 92, mozjpeg: true })
             .toBuffer()
             .then(async (buf) => {
-              await writeFile(originalPath, buf);
+              await storage.put(originalKey, buf);
               savedSize = buf.length;
             })
         );
       }
     } else {
-      savedSize = fs.statSync(originalPath).size;
+      const existingSize = await storage.size(originalKey);
+      savedSize = existingSize ?? file.size;
     }
 
     // Thumbnail — effort:0 for fast webp encoding
@@ -220,7 +222,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
           .webp({ quality: 80, effort: 0 })
           .toBuffer()
-          .then((buf) => writeFile(thumbnailDest, buf))
+          .then((buf) => storage.put(thumbnailKey, buf))
       );
     }
 
@@ -302,14 +304,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     albumPhotos.map((p: any) => [p.id, p])
   );
 
-  let deleted = 0;
-  for (const photoId of photoIds) {
-    const photo = albumPhotoMap.get(photoId);
-    if (!photo) continue;
-    deletePhotoFiles(photo);
+  const validIds = photoIds.filter((id) => albumPhotoMap.has(id));
+  await Promise.all(validIds.map((id) => deletePhotoFiles(albumPhotoMap.get(id)!)));
+  for (const photoId of validIds) {
     db.delete(photos).where(eq(photos.id, photoId)).run();
-    deleted++;
   }
+  const deleted = validIds.length;
 
   return NextResponse.json({ deleted });
 }

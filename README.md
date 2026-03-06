@@ -15,6 +15,7 @@ A self-hosted photo gallery organizer built with Next.js. Organize photos into g
 - **Image Protection** — Multi-layer download prevention for non-downloadable galleries (canvas rendering, watermarking, encrypted delivery, tile fragmentation)
 - **Signed Image URLs** — HMAC-signed URLs with configurable expiration prevent direct hotlinking
 - **Backup & Restore** — Export/import all data as a zip archive
+- **S3 / R2 Storage** — Optionally store photos in AWS S3, Cloudflare R2, or any S3-compatible service
 - **Multi-Language** — English, Chinese (中文), and Japanese (日本語)
 - **Dark Mode** — System-aware theme switching
 - **Responsive** — Works on desktop, tablet, and mobile
@@ -31,8 +32,9 @@ This clones the repo, installs dependencies, sets up the database, builds for pr
 
 ```bash
 cd sapphire
-nano .env        # set your admin password
-npm start        # start on port 3000
+nano .env                          # set your admin password
+sudo bash scripts/systemd.sh      # register as a systemd service (optional)
+npm start                          # or just start directly on port 3000
 ```
 
 ### One-Line Update
@@ -53,34 +55,95 @@ Prerequisites: Node.js 20+, npm.
 git clone https://github.com/Yamimega/Sapphire.git
 cd Sapphire
 npm install
-npm run db:generate
-npm run db:migrate
-```
-
-Create a `.env` file:
-
-```env
-SAPPHIRE_PASSWORD=your-secret-password
-
-# Optional: use PostgreSQL instead of SQLite
-# DATABASE_URL=postgresql://user:password@localhost:5432/sapphire
-```
-
-```bash
-npm run build && npm start
+npm run setup      # creates .env with defaults + runs database migrations
+nano .env          # set SAPPHIRE_PASSWORD
+npm run build
+npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### PostgreSQL Setup
+> Without `SAPPHIRE_PASSWORD`, the app runs in **read-only mode** — visitors can browse but cannot upload, edit, or delete anything.
 
-By default Sapphire uses SQLite (zero configuration). To use PostgreSQL instead:
+### systemd Service (Recommended for Linux)
 
-1. Create a PostgreSQL database:
+Run Sapphire as a background service that starts on boot:
+
+```bash
+sudo bash scripts/systemd.sh
+```
+
+Options: `--port=PORT`, `--user=USER`, `--name=NAME`. Run with `--help` for details.
+
+```bash
+systemctl status sapphire       # check status
+systemctl restart sapphire      # restart after config changes
+journalctl -u sapphire -f       # live logs
+```
+
+To remove:
+
+```bash
+sudo bash scripts/systemd.sh --uninstall
+```
+
+### Docker (Optional)
+
+If you prefer containers:
+
+```bash
+git clone https://github.com/Yamimega/Sapphire.git
+cd Sapphire
+echo "SAPPHIRE_PASSWORD=your-secret-password" > .env
+docker compose up -d
+```
+
+Data is persisted in a Docker volume. Edit `docker-compose.yml` to uncomment PostgreSQL or S3 sections as needed.
+
+## Storage
+
+By default, photos are stored on the local filesystem under `data/uploads/`. You can optionally use an S3-compatible service instead.
+
+### Local (Default)
+
+No configuration needed. Photos are stored in `data/uploads/` relative to the project root.
+
+### S3 / Cloudflare R2 / MinIO
+
+Add to your `.env`:
+
+```env
+STORAGE_PROVIDER=s3
+S3_BUCKET=your-bucket
+S3_REGION=auto                    # use "auto" for Cloudflare R2
+S3_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+S3_ACCESS_KEY_ID=your-key
+S3_SECRET_ACCESS_KEY=your-secret
+# S3_PREFIX=                      # optional key prefix for all objects
+```
+
+Then rebuild and restart:
+
+```bash
+npm run build
+systemctl restart sapphire       # or: npm start
+```
+
+The database (SQLite or PostgreSQL) always stays local. Only photo files are offloaded to the bucket.
+
+## Database
+
+### SQLite (Default)
+
+Zero configuration. Data is stored in `data/database.db`.
+
+### PostgreSQL
+
+1. Create a database:
    ```sql
    CREATE DATABASE sapphire;
    ```
-2. Add `DATABASE_URL` to your `.env`:
+2. Add `DATABASE_URL` to `.env`:
    ```env
    DATABASE_URL=postgresql://user:password@localhost:5432/sapphire
    ```
@@ -90,50 +153,31 @@ By default Sapphire uses SQLite (zero configuration). To use PostgreSQL instead:
    npm run db:migrate
    ```
 
-Backup/restore in PostgreSQL mode should use `pg_dump` / `pg_restore` instead of the built-in backup feature. The `npm run backup` script is SQLite-only.
+Backup/restore in PostgreSQL mode should use `pg_dump` / `pg_restore` instead of the built-in backup feature.
 
-> Without `SAPPHIRE_PASSWORD`, the app runs in **read-only mode** — visitors can browse but cannot upload, edit, or delete anything.
-
-### Running as a systemd Service (Linux)
-
-To start Sapphire on boot and manage it with `systemctl`:
-
-```bash
-sudo bash scripts/systemd.sh
-```
-
-Options: `--port=PORT`, `--user=USER`, `--name=NAME`. Run with `--help` for details.
-
-Once installed:
-
-```bash
-systemctl status sapphire       # check status
-systemctl restart sapphire      # restart after config changes
-journalctl -u sapphire -f       # live logs
-```
-
-To remove the service:
-
-```bash
-sudo bash scripts/systemd.sh --uninstall
-```
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | *(none)* | PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/sapphire`). If unset, SQLite is used. |
 | `SAPPHIRE_PASSWORD` | *(none)* | Admin password. Without it the app is read-only. |
-| `SAPPHIRE_WATERMARK_ENABLED` | `true` | Set to `false` to disable watermarking entirely. Other protection layers (canvas rendering, encrypted delivery, tile fragmentation) remain active. |
+| `DATABASE_URL` | *(none)* | PostgreSQL connection string. If unset, SQLite is used. |
+| `STORAGE_PROVIDER` | `local` | Storage backend: `local` (filesystem) or `s3` (S3-compatible). |
+| `S3_BUCKET` | *(none)* | S3 bucket name (required when `STORAGE_PROVIDER=s3`). |
+| `S3_REGION` | `us-east-1` | S3 region. Use `auto` for Cloudflare R2. |
+| `S3_ENDPOINT` | *(none)* | Custom S3 endpoint URL (required for R2, MinIO, etc.). |
+| `S3_ACCESS_KEY_ID` | *(none)* | S3 access key. |
+| `S3_SECRET_ACCESS_KEY` | *(none)* | S3 secret key. |
+| `S3_PREFIX` | *(empty)* | Optional key prefix for all stored objects. |
+| `SAPPHIRE_WATERMARK_ENABLED` | `true` | Set to `false` to disable watermarking entirely. |
 | `SAPPHIRE_WATERMARK_TEXT` | `PROTECTED` | Text overlaid on images in non-downloadable galleries for guests. |
-| `SAPPHIRE_WATERMARK_OPACITY` | `0.3` | Watermark opacity (0.01–1). |
+| `SAPPHIRE_WATERMARK_OPACITY` | `0.3` | Watermark opacity (0.01-1). |
 | `SAPPHIRE_WATERMARK_COLOR` | `white` | `white` or `black` — pick whichever contrasts with your photos. |
 | `SAPPHIRE_WATERMARK_SIZE` | `0` | Font size in px. `0` = auto-scale based on image dimensions. |
-| `SAPPHIRE_WATERMARK_SPACING` | `0` | Distance between repeated watermarks in px. `0` = auto. Only applies to `diagonal` and `cross` styles. |
+| `SAPPHIRE_WATERMARK_SPACING` | `0` | Distance between repeated watermarks in px. `0` = auto. |
 | `SAPPHIRE_WATERMARK_STYLE` | `diagonal` | Watermark layout style (see below). |
 | `SAPPHIRE_IMAGE_TOKEN_TTL` | `3600` | Signed image URL expiration in seconds. |
 
-#### Watermark Styles
+### Watermark Styles
 
 | Style | Description |
 |---|---|
@@ -178,7 +222,7 @@ When a gallery has **Allow Download** turned off, Sapphire applies multiple laye
 1. **Canvas Rendering** — Images are drawn on an HTML `<canvas>` element instead of a standard `<img>` tag, preventing right-click "Save Image As" and drag-to-desktop.
 2. **Watermarking** — A configurable text watermark is composited into the image pixels server-side using sharp. The watermark is baked into the image data, not a CSS overlay.
 3. **Encrypted Delivery** — Image bytes are XOR-obfuscated with a random key sent in a response header. The browser decrypts client-side before rendering. This prevents saving the raw response as a usable image file.
-4. **Tile Fragmentation** — Full-size lightbox images are split into a 3×3 grid of tiles, each fetched separately and assembled on the canvas. No single network request contains the complete image.
+4. **Tile Fragmentation** — Full-size lightbox images are split into a 3x3 grid of tiles, each fetched separately and assembled on the canvas. No single network request contains the complete image.
 
 Admins bypass all protection layers and can always download images directly.
 
@@ -231,12 +275,17 @@ src/
 │   │   ├── schema.ts       # Drizzle schema (SQLite + PostgreSQL dual definitions)
 │   │   ├── config.ts       # Database driver detection (DATABASE_URL)
 │   │   └── index.ts        # Database connection + runtime migrations
+│   ├── storage/            # Storage abstraction (local filesystem or S3)
+│   │   ├── types.ts        # StorageProvider interface
+│   │   ├── local.ts        # Local filesystem provider
+│   │   ├── s3.ts           # S3-compatible provider (AWS, R2, MinIO)
+│   │   └── index.ts        # Provider factory
 │   ├── i18n/               # Translations (en, zh, ja)
 │   ├── auth.ts             # Server-side auth (HMAC tokens)
 │   ├── auth-context.tsx    # Client-side auth state
 │   ├── constants.ts        # App constants (server-only, imports path)
 │   ├── image-token.ts      # Signed image URLs + one-time download tokens
-│   ├── plate-utils.ts      # Legacy Plate.js JSON → Markdown converter
+│   ├── plate-utils.ts      # Legacy Plate.js JSON -> Markdown converter
 │   ├── server-utils.ts     # Node.js utilities (server-only)
 │   └── utils.ts            # Client-safe utilities (only cn())
 ├── types/                  # TypeScript interfaces
@@ -257,9 +306,11 @@ data/                       # Runtime data (gitignored)
 
 **Database** — SQLite (default) or PostgreSQL. Set `DATABASE_URL` in `.env` to switch to PostgreSQL. Schema changes go through Drizzle Kit migrations (`drizzle/` for SQLite, `drizzle-pg/` for PostgreSQL) and runtime column additions (`db/index.ts`). SQLite uses WAL mode. Booleans are stored as `integer` (0/1) in SQLite and `boolean` in PostgreSQL.
 
+**Storage** — All file storage goes through the `StorageProvider` interface (`src/lib/storage/`). The default `LocalStorageProvider` writes to `data/uploads/`. Setting `STORAGE_PROVIDER=s3` switches to `S3StorageProvider` which works with any S3-compatible API (AWS S3, Cloudflare R2, MinIO). API routes never use `fs` directly for uploads — always go through `storage.put()`, `storage.get()`, `storage.del()`, etc.
+
 **Markdown** — Notes and descriptions are stored as plain Markdown text. A custom renderer in `rich-text-viewer.tsx` converts Markdown to HTML. No external Markdown library is used. Legacy Plate.js JSON content is auto-converted via `plate-utils.ts`.
 
-**Images** — Uploaded photos are normalized to JPEG and stored in `data/uploads/originals/`. WebP thumbnails are generated at 400px width. Album covers are resized to 800px max. All images are served through `/api/images/[...path]` with HMAC-signed URLs, not Next.js static serving. Non-downloadable galleries apply watermarking, XOR encryption, and tile fragmentation for guest users.
+**Images** — Uploaded photos are normalized to JPEG and stored via the storage provider. WebP thumbnails are generated at 400px width. Album covers are resized to 800px max. All images are served through `/api/images/[...path]` with HMAC-signed URLs, not Next.js static serving. Non-downloadable galleries apply watermarking, XOR encryption, and tile fragmentation for guest users.
 
 **Downloads** — Downloads use a two-step flow: the client requests a one-time token (`POST /api/images/download-token`), then fetches the encrypted image via the token (`GET /api/images/download/{token}`). The client decrypts and triggers a blob download. This prevents direct URL sharing of downloadable files.
 

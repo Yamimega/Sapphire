@@ -1,7 +1,6 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import { ACCEPTED_MIME_TYPES, ORIGINALS_DIR, THUMBNAILS_DIR } from "./constants";
+import { ACCEPTED_MIME_TYPES } from "./constants";
+import { storage } from "./storage";
 
 export function generateId(): string {
   return crypto.randomUUID();
@@ -47,9 +46,9 @@ export function xorEncrypt(buffer: Buffer, key: Buffer): Buffer {
 }
 
 /** Delete original and thumbnail files for a photo */
-export function deletePhotoFiles(photo: { filepath: string; thumbnailPath: string }): void {
-  const origPath = path.join(ORIGINALS_DIR, path.basename(photo.filepath));
-  const thumbPath = path.join(THUMBNAILS_DIR, path.basename(photo.thumbnailPath));
-  try { fs.unlinkSync(origPath); } catch { /* file may not exist */ }
-  try { fs.unlinkSync(thumbPath); } catch { /* file may not exist */ }
+export async function deletePhotoFiles(photo: { filepath: string; thumbnailPath: string }): Promise<void> {
+  await Promise.all([
+    storage.del(photo.filepath),
+    storage.del(photo.thumbnailPath),
+  ]);
 }

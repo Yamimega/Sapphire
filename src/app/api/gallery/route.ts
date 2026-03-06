@@ -106,9 +106,7 @@ export async function DELETE(request: NextRequest) {
     .from(photos)
     .where(inArray(photos.albumId, galleryIds))
     .all();
-  for (const photo of galleryPhotos) {
-    deletePhotoFiles(photo);
-  }
+  await Promise.all(galleryPhotos.map((photo: any) => deletePhotoFiles(photo)));
 
   // Cascade delete handles photos in DB
   db.delete(albums).where(inArray(albums.id, galleryIds)).run();

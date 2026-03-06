@@ -1,13 +1,12 @@
 import path from "path";
 import fs from "fs";
 import * as schema from "./schema";
-import { DATA_DIR, UPLOADS_DIR, UPLOAD_SUBDIRS } from "../constants";
+import { DATA_DIR } from "../constants";
 import { isPostgres, DATABASE_URL } from "./config";
 
-// Ensure upload directories exist (once at startup)
-for (const dir of UPLOAD_SUBDIRS) {
-  fs.mkdirSync(path.join(UPLOADS_DIR, dir), { recursive: true });
-}
+// Storage initialization (directory creation for local, no-op for S3) is
+// handled by the storage module. Import it here to ensure it runs at startup.
+import "../storage";
 
 export const DB_PATH = path.join(DATA_DIR, "database.db");
 

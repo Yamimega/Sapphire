@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { ORIGINALS_DIR } from "@/lib/constants";
 import { consumeDownloadToken } from "@/lib/image-token";
 import { xorEncrypt } from "@/lib/server-utils";
+import { storage } from "@/lib/storage";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -23,12 +21,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
   }
 
-  const filePath = path.join(ORIGINALS_DIR, path.basename(photo.filepath));
-  if (!fs.existsSync(filePath)) {
+  const buffer = await storage.get(photo.filepath);
+  if (!buffer) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
-
-  const buffer = fs.readFileSync(filePath);
 
   // XOR encrypt the download
   const key = crypto.randomBytes(32);

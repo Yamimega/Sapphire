@@ -4,10 +4,8 @@ import { categories } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { formatDatetime, sha256 } from "@/lib/server-utils";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
-import { COVERS_DIR } from "@/lib/constants";
+import { storage } from "@/lib/storage";
 import sharp from "sharp";
-import fs from "fs";
-import path from "path";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,12 +33,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     .webp({ quality: 85 })
     .toBuffer();
 
-  fs.writeFileSync(path.join(COVERS_DIR, filename), coverBuffer);
+  await storage.put(`covers/${filename}`, coverBuffer);
 
   // Delete old cover if different
   if (category.coverImagePath && category.coverImagePath !== filename) {
-    const oldPath = path.join(COVERS_DIR, category.coverImagePath);
-    try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
+    await storage.del(`covers/${category.coverImagePath}`);
   }
 
   db.update(categories)

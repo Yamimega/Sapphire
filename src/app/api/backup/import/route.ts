@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DATA_DIR, UPLOADS_DIR, UPLOAD_SUBDIRS } from "@/lib/constants";
+import { DATA_DIR, UPLOAD_SUBDIRS } from "@/lib/constants";
 import { getSqlite, replaceConnection, openConnection, DB_PATH } from "@/lib/db";
 import { isPostgres } from "@/lib/db/config";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
+import { storage } from "@/lib/storage";
 import unzipper from "unzipper";
 import path from "path";
 import fs from "fs";
@@ -123,29 +124,45 @@ export async function POST(request: NextRequest) {
     }
 
     // Remove existing uploads
-    if (fs.existsSync(UPLOADS_DIR)) {
-      fs.rmSync(UPLOADS_DIR, { recursive: true });
-    }
+    await storage.deletePrefix("");
 
-    // Recreate all upload directories
-    for (const dir of UPLOAD_SUBDIRS) {
-      fs.mkdirSync(path.join(UPLOADS_DIR, dir), { recursive: true });
+    // Recreate local upload directories (for local storage)
+    if (storage.localDir) {
+      for (const dir of UPLOAD_SUBDIRS) {
+        fs.mkdirSync(path.join(storage.localDir, dir), { recursive: true });
+      }
     }
 
     // Extract all files
     const resolvedDataDir = path.resolve(DATA_DIR);
     for (const entry of directory.files) {
-      const targetPath = path.join(DATA_DIR, entry.path);
-      const resolved = path.resolve(targetPath);
+      if (entry.type === "Directory") {
+        // For local storage, ensure directories exist
+        if (storage.localDir) {
+          const targetPath = path.join(DATA_DIR, entry.path);
+          const resolved = path.resolve(targetPath);
+          if (resolved.startsWith(resolvedDataDir)) {
+            fs.mkdirSync(resolved, { recursive: true });
+          }
+        }
+        continue;
+      }
 
       // Security: prevent path traversal
-      if (!resolved.startsWith(resolvedDataDir)) continue;
+      if (entry.path.includes("..")) continue;
 
-      if (entry.type === "Directory") {
-        fs.mkdirSync(resolved, { recursive: true });
+      const content = await entry.buffer();
+
+      if (entry.path.startsWith("uploads/")) {
+        // Upload files go to storage provider
+        const storageKey = entry.path.slice("uploads/".length);
+        if (storageKey) await storage.put(storageKey, content);
       } else {
+        // Non-upload files (database.db) go to local DATA_DIR
+        const targetPath = path.join(DATA_DIR, entry.path);
+        const resolved = path.resolve(targetPath);
+        if (!resolved.startsWith(resolvedDataDir)) continue;
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
-        const content = await entry.buffer();
         fs.writeFileSync(resolved, content);
       }
     }

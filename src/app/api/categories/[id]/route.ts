@@ -4,9 +4,7 @@ import { categories, albums } from "@/lib/db/schema";
 import { eq, count } from "drizzle-orm";
 import { formatDatetime } from "@/lib/server-utils";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
-import { COVERS_DIR } from "@/lib/constants";
-import fs from "fs";
-import path from "path";
+import { storage } from "@/lib/storage";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -87,8 +85,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
 
   // Delete cover image file
   if (category.coverImagePath) {
-    const coverPath = path.join(COVERS_DIR, category.coverImagePath);
-    try { fs.unlinkSync(coverPath); } catch { /* file may not exist */ }
+    await storage.del(`covers/${category.coverImagePath}`);
   }
 
   // Unlink galleries from this category (set null, don't delete galleries)
