@@ -23,15 +23,13 @@ export function BlobImage({ src, alt, className, style, ...props }: BlobImagePro
   const containerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // When src changes, immediately show cached blob or reset to placeholder
   useEffect(() => {
-    if (!src) return;
+    setBlobUrl(blobCache.get(src) ?? "");
+  }, [src]);
 
-    // Already cached
-    const cached = blobCache.get(src);
-    if (cached) {
-      setBlobUrl(cached);
-      return;
-    }
+  useEffect(() => {
+    if (!src || blobCache.has(src)) return;
 
     // Wait until near viewport before fetching
     const el = containerRef.current;
