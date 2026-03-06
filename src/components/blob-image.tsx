@@ -2,7 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const CACHE_MAX = 200;
 const blobCache = new Map<string, string>();
+
+function evictOldest() {
+  if (blobCache.size <= CACHE_MAX) return;
+  const first = blobCache.keys().next().value;
+  if (first) {
+    URL.revokeObjectURL(blobCache.get(first)!);
+    blobCache.delete(first);
+  }
+}
 
 interface BlobImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string;
@@ -10,65 +20,58 @@ interface BlobImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
 
 export function BlobImage({ src, alt, className, style, ...props }: BlobImageProps) {
   const [blobUrl, setBlobUrl] = useState<string>(() => blobCache.get(src) ?? "");
-  const [error, setError] = useState(false);
-  const [visible, setVisible] = useState(() => !!blobCache.get(src));
   const containerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Lazy: observe visibility before fetching
   useEffect(() => {
-    if (blobCache.get(src)) {
-      setVisible(true);
-      return;
-    }
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [src]);
+    if (!src) return;
 
-  // Fetch once visible
-  useEffect(() => {
-    if (!src || !visible) return;
-
+    // Already cached
     const cached = blobCache.get(src);
     if (cached) {
       setBlobUrl(cached);
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    // Wait until near viewport before fetching
+    const el = containerRef.current;
+    if (!el) return;
 
-    fetch(src, { signal: controller.signal, credentials: "same-origin" })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch image");
-        return res.blob();
-      })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        blobCache.set(src, url);
-        setBlobUrl(url);
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(true);
-      });
+    let cancelled = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        observer.disconnect();
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        fetch(src, { signal: controller.signal, credentials: "same-origin" })
+          .then((res) => {
+            if (!res.ok) throw new Error("Failed to fetch image");
+            return res.blob();
+          })
+          .then((blob) => {
+            if (cancelled) return;
+            const url = URL.createObjectURL(blob);
+            blobCache.set(src, url);
+            evictOldest();
+            setBlobUrl(url);
+          })
+          .catch(() => {});
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
 
     return () => {
-      controller.abort();
+      cancelled = true;
+      observer.disconnect();
+      abortRef.current?.abort();
     };
-  }, [src, visible]);
+  }, [src]);
 
-  if (error || !blobUrl) {
+  if (!blobUrl) {
     return (
       <div ref={containerRef} className={className} style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div className="h-full w-full animate-pulse bg-muted" />

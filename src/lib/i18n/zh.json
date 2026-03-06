@@ -205,6 +205,8 @@
   "settings.importDesc": "从之前导出的备份恢复。这将替换所有当前数据。",
   "settings.importBtn": "导入备份",
   "settings.importing": "导入中...",
+  "settings.importUploading": "上传中... {percent}%",
+  "settings.importProcessing": "正在恢复数据...",
   "settings.importConfirmTitle": "导入备份",
   "settings.importConfirmDesc": "这将用备份文件的内容替换所有当前数据（画廊、照片和笔记）。此操作无法撤消。",
   "settings.importSuccess": "已恢复 {galleryCount} 个画廊和 {photoCount} 张照片",

@@ -94,6 +94,30 @@ Backup/restore in PostgreSQL mode should use `pg_dump` / `pg_restore` instead of
 
 > Without `SAPPHIRE_PASSWORD`, the app runs in **read-only mode** — visitors can browse but cannot upload, edit, or delete anything.
 
+### Running as a systemd Service (Linux)
+
+To start Sapphire on boot and manage it with `systemctl`:
+
+```bash
+sudo bash scripts/systemd.sh
+```
+
+Options: `--port=PORT`, `--user=USER`, `--name=NAME`. Run with `--help` for details.
+
+Once installed:
+
+```bash
+systemctl status sapphire       # check status
+systemctl restart sapphire      # restart after config changes
+journalctl -u sapphire -f       # live logs
+```
+
+To remove the service:
+
+```bash
+sudo bash scripts/systemd.sh --uninstall
+```
+
 ### Environment Variables
 
 | Variable | Default | Description |

@@ -205,6 +205,8 @@
   "settings.importDesc": "以前エクスポートしたバックアップから復元します。現在のすべてのデータが置き換えられます。",
   "settings.importBtn": "バックアップ復元",
   "settings.importing": "インポート中...",
+  "settings.importUploading": "アップロード中... {percent}%",
+  "settings.importProcessing": "データを復元中...",
   "settings.importConfirmTitle": "バックアップ復元",
   "settings.importConfirmDesc": "バックアップファイルの内容で現在のすべてのデータ（ギャラリー、写真、ノート）が置き換えられます。この操作は元に戻せません。",
   "settings.importSuccess": "{galleryCount} 個のギャラリーと {photoCount} 枚の写真を復元しました",

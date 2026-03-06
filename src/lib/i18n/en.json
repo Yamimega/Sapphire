@@ -205,6 +205,8 @@
   "settings.importDesc": "Restore from a previously exported backup. This will replace all current data.",
   "settings.importBtn": "Import Backup",
   "settings.importing": "Importing...",
+  "settings.importUploading": "Uploading... {percent}%",
+  "settings.importProcessing": "Restoring data...",
   "settings.importConfirmTitle": "Import Backup",
   "settings.importConfirmDesc": "This will replace ALL current data (galleries, photos, and notes) with the contents of the backup file. This action cannot be undone.",
   "settings.importSuccess": "Restored {galleryCount} galleries and {photoCount} photos",
