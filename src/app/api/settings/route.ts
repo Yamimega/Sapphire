@@ -76,10 +76,10 @@ export async function PUT(request: NextRequest) {
   }
 
   const allowedKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-  await withTransaction(() => {
+  await withTransaction((tx) => {
     for (const [key, value] of Object.entries(settings)) {
       if (!allowedKeys.has(key)) continue;
-      db.insert(siteSettings)
+      tx.insert(siteSettings)
         .values({ key, value: String(value) })
         .onConflictDoUpdate({ target: siteSettings.key, set: { value: String(value) } })
         .run();

@@ -26,9 +26,9 @@ export async function PUT(request: NextRequest) {
   }
 
   const now = formatDatetime();
-  await withTransaction(() => {
+  await withTransaction((tx) => {
     for (let i = 0; i < galleryIds.length; i++) {
-      db.update(albums)
+      tx.update(albums)
         .set({ displayOrder: i, updatedAt: now })
         .where(eq(albums.id, galleryIds[i]))
         .run();

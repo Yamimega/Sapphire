@@ -27,12 +27,21 @@ export function NavHeader() {
   const [siteName, setSiteName] = useState("Sapphire");
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.settings?.siteName) setSiteName(d.settings.siteName);
-      })
-      .catch(() => {});
+    const loadSettings = () => {
+      fetch("/api/settings")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.settings?.siteName) setSiteName(d.settings.siteName);
+          if (d.settings?.siteName || d.settings?.siteDescription) {
+            document.title = `${d.settings.siteName || "Sapphire"} - ${d.settings.siteDescription || "Photo Gallery Organizer"}`;
+          }
+        })
+        .catch(() => {});
+    };
+
+    loadSettings();
+    window.addEventListener("settings-updated", loadSettings);
+    return () => window.removeEventListener("settings-updated", loadSettings);
   }, []);
 
   const navItems = [

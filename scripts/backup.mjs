@@ -14,7 +14,7 @@ import { execSync } from "child_process";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 if (DATABASE_URL.startsWith("postgres")) {
   console.error("PostgreSQL detected. Use pg_dump to back up your database:");
-  console.error(`  pg_dump "${DATABASE_URL}" > backup.sql`);
+  console.error('  pg_dump "$DATABASE_URL" > backup.sql');
   console.error("This script only supports SQLite backups.");
   process.exit(1);
 }

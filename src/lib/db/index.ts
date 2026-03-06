@@ -4,7 +4,7 @@ import * as schema from "./schema";
 import { DATA_DIR, UPLOADS_DIR, UPLOAD_SUBDIRS } from "../constants";
 import { isPostgres, DATABASE_URL } from "./config";
 
-// Ensure upload directories exist
+// Ensure upload directories exist (once at startup)
 for (const dir of UPLOAD_SUBDIRS) {
   fs.mkdirSync(path.join(UPLOADS_DIR, dir), { recursive: true });
 }
@@ -25,17 +25,22 @@ const globalForDb = globalThis as unknown as {
   _sqlite: SqliteConn | undefined;
 };
 
-// ---------- SQLite ----------
+// ---------- SQLite helpers ----------
+
+function applySqlitePragmas(conn: SqliteConn) {
+  conn.pragma("journal_mode = WAL");
+  conn.pragma("foreign_keys = ON");
+  conn.pragma("busy_timeout = 5000");
+}
 
 function initSqlite() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Database = require("better-sqlite3");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { drizzle } = require("drizzle-orm/better-sqlite3");
 
   const conn = new Database(DB_PATH);
-  conn.pragma("journal_mode = WAL");
-  conn.pragma("foreign_keys = ON");
-  conn.pragma("busy_timeout = 5000");
+  applySqlitePragmas(conn);
 
   // Bootstrap tables
   conn.exec(`CREATE TABLE IF NOT EXISTS categories (
@@ -105,10 +110,15 @@ function initSqlite() {
 // ---------- PostgreSQL ----------
 
 function initPostgres() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool } = require("pg");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { drizzle } = require("drizzle-orm/node-postgres");
 
   const pool = new Pool({ connectionString: DATABASE_URL });
+  pool.on("error", (err: Error) => {
+    console.error("PostgreSQL pool error:", err.message);
+  });
   globalForDb._db = drizzle(pool, { schema });
 }
 
@@ -129,15 +139,12 @@ export let db: DrizzleDb = globalForDb._db;
 
 /**
  * Raw SQLite connection. Only available in SQLite mode.
- * Use `getSqlite()` to access — throws if running on PostgreSQL.
+ * Throws if running on PostgreSQL.
  */
 export function getSqlite(): SqliteConn {
   if (isPostgres) throw new Error("getSqlite() is not available in PostgreSQL mode");
   return globalForDb._sqlite;
 }
-
-/** For backward compat — routes that import `sqlite` directly */
-export const sqlite = isPostgres ? null : globalForDb._sqlite;
 
 /** Open a new SQLite connection with standard pragmas (SQLite only) */
 export function openConnection(dbPath: string = DB_PATH) {
@@ -145,15 +152,14 @@ export function openConnection(dbPath: string = DB_PATH) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Database = require("better-sqlite3");
   const conn = new Database(dbPath);
-  conn.pragma("journal_mode = WAL");
-  conn.pragma("foreign_keys = ON");
-  conn.pragma("busy_timeout = 5000");
+  applySqlitePragmas(conn);
   return conn;
 }
 
 /** Replace the live DB connection (SQLite backup import only) */
 export function replaceConnection(newConn: SqliteConn) {
   if (isPostgres) throw new Error("replaceConnection() is not available in PostgreSQL mode");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { drizzle } = require("drizzle-orm/better-sqlite3");
   const old = globalForDb._sqlite;
   globalForDb._sqlite = newConn;
@@ -166,21 +172,13 @@ export function replaceConnection(newConn: SqliteConn) {
  * Run a function inside a database transaction.
  * Works for both SQLite (synchronous) and PostgreSQL (async).
  */
-export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+export async function withTransaction<T>(fn: (tx: DrizzleDb) => T | Promise<T>): Promise<T> {
   if (isPostgres) {
     return db.transaction(async (tx: DrizzleDb) => {
-      // For PG, drizzle passes a transaction-scoped db instance.
-      // Since our routes use the module-level `db`, we temporarily swap it.
-      const prev = db;
-      db = tx;
-      try {
-        return await fn();
-      } finally {
-        db = prev;
-      }
+      return await fn(tx);
     });
   }
   // SQLite: synchronous transaction
   const sqlite = getSqlite();
-  return sqlite.transaction(() => fn())();
+  return sqlite.transaction(() => fn(db))();
 }

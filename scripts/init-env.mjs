@@ -10,11 +10,6 @@ import path from "path";
 
 const envPath = path.join(process.cwd(), ".env");
 
-if (fs.existsSync(envPath)) {
-  console.log(".env already exists — skipping.");
-  process.exit(0);
-}
-
 const template = `# Sapphire Configuration
 # See README.md for full documentation of all variables.
 
@@ -38,5 +33,13 @@ SAPPHIRE_WATERMARK_STYLE=diagonal
 # SAPPHIRE_IMAGE_TOKEN_TTL=3600
 `;
 
-fs.writeFileSync(envPath, template);
-console.log("Created .env with default settings — edit SAPPHIRE_PASSWORD before starting.");
+try {
+  fs.writeFileSync(envPath, template, { flag: "wx" });
+  console.log("Created .env with default settings — edit SAPPHIRE_PASSWORD before starting.");
+} catch (err) {
+  if (err.code === "EEXIST") {
+    console.log(".env already exists — skipping.");
+  } else {
+    throw err;
+  }
+}

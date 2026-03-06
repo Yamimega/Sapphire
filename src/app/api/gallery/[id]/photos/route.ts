@@ -10,6 +10,7 @@ import type { ExifInfo } from "@/types";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import fs from "fs";
+import { writeFile } from "fs/promises";
 import path from "path";
 
 function extractExif(metadata: sharp.Metadata): ExifInfo {
@@ -195,16 +196,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Original: save or convert
     if (!originalExists) {
       if (isJpeg) {
-        fs.writeFileSync(originalPath, buffer);
-        savedSize = buffer.length;
+        tasks.push(writeFile(originalPath, buffer).then(() => { savedSize = buffer.length; }));
       } else {
         tasks.push(
           decoded.clone()
             .keepMetadata()
             .jpeg({ quality: 92, mozjpeg: true })
             .toBuffer()
-            .then((buf) => {
-              fs.writeFileSync(originalPath, buf);
+            .then(async (buf) => {
+              await writeFile(originalPath, buf);
               savedSize = buf.length;
             })
         );
@@ -213,14 +213,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       savedSize = fs.statSync(originalPath).size;
     }
 
-    // Thumbnail — effort:0 for fast webp encoding, nearLossless for quality
+    // Thumbnail — effort:0 for fast webp encoding
     if (!thumbExists) {
       tasks.push(
         decoded.clone()
           .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
           .webp({ quality: 80, effort: 0 })
           .toBuffer()
-          .then((buf) => { fs.writeFileSync(thumbnailDest, buf); })
+          .then((buf) => writeFile(thumbnailDest, buf))
       );
     }
 
@@ -292,19 +292,21 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "No photo IDs provided" }, { status: 400 });
   }
 
-  // Fetch all photos that belong to this album and match the IDs
+  // Fetch only the columns needed for file deletion
   const albumPhotos = db
-    .select()
+    .select({ id: photos.id, filepath: photos.filepath, thumbnailPath: photos.thumbnailPath })
     .from(photos)
     .where(eq(photos.albumId, id))
     .all();
-  const albumPhotoMap = new Map(albumPhotos.map((p: any) => [p.id, p]));
+  const albumPhotoMap = new Map<string, { filepath: string; thumbnailPath: string }>(
+    albumPhotos.map((p: any) => [p.id, p])
+  );
 
   let deleted = 0;
   for (const photoId of photoIds) {
     const photo = albumPhotoMap.get(photoId);
     if (!photo) continue;
-    deletePhotoFiles(photo as { filepath: string; thumbnailPath: string });
+    deletePhotoFiles(photo);
     db.delete(photos).where(eq(photos.id, photoId)).run();
     deleted++;
   }

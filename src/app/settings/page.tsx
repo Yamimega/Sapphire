@@ -52,6 +52,8 @@ export default function SettingsPage() {
 
 
   const [importing, setImporting] = useState(false);
+  const [importPhase, setImportPhase] = useState<"upload" | "processing">("upload");
+  const [importProgress, setImportProgress] = useState(0);
   const [confirmImport, setConfirmImport] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +97,7 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error("Failed to save");
       toast.success(t("settings.saved"));
       setDirty(false);
+      window.dispatchEvent(new CustomEvent("settings-updated"));
     } catch {
       toast.error(t("settings.saveFailed"));
     }
@@ -139,12 +142,66 @@ export default function SettingsPage() {
     if (!pendingFile) return;
     setConfirmImport(false);
     setImporting(true);
+    setImportPhase("upload");
+    setImportProgress(0);
+
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per chunk
+    const MAX_RETRIES = 3;
+
     try {
-      const formData = new FormData();
-      formData.append("backup", pendingFile);
-      const res = await fetch("/api/backup/import", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      // 1. Get a unique upload session ID from the server
+      const initRes = await fetch("/api/backup/import/chunk");
+      if (!initRes.ok) throw new Error("Failed to initialize upload");
+      const { uploadId } = await initRes.json();
+
+      // 2. Split file and upload chunks
+      const totalChunks = Math.ceil(pendingFile.size / CHUNK_SIZE);
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, pendingFile.size);
+        const blob = pendingFile.slice(start, end);
+
+        let success = false;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            const form = new FormData();
+            form.append("chunk", blob, "chunk");
+            form.append("index", String(i));
+            form.append("total", String(totalChunks));
+            form.append("uploadId", uploadId);
+
+            const res = await fetch("/api/backup/import/chunk", {
+              method: "POST",
+              body: form,
+            });
+            if (!res.ok) {
+              const data = await res.json();
+              throw new Error(data.error || `Chunk ${i} failed`);
+            }
+            success = true;
+            break;
+          } catch (err) {
+            if (attempt === MAX_RETRIES - 1) throw err;
+            // Wait before retry (1s, 2s, 3s)
+            await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
+          }
+        }
+        if (!success) throw new Error(`Failed to upload chunk ${i}`);
+
+        setImportProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
+
+      // 3. Tell the server to assemble and process
+      setImportPhase("processing");
+      const finalRes = await fetch("/api/backup/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId }),
+      });
+      const data = await finalRes.json();
+      if (!finalRes.ok) throw new Error(data.error || t("settings.importFailed"));
+
       toast.success(
         t("settings.importSuccess", {
           galleryCount: data.galleryCount,
@@ -382,15 +439,34 @@ export default function SettingsPage() {
               <div className="rounded-lg border p-4">
                 <h4 className="mb-1 text-sm font-medium">{t("settings.importTitle")}</h4>
                 <p className="mb-3 text-xs text-muted-foreground">{t("settings.importDesc")}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => inputRef.current?.click()}
-                  disabled={importing}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  {importing ? t("settings.importing") : t("settings.importBtn")}
-                </Button>
+                {importing ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {importPhase === "upload"
+                        ? t("settings.importUploading", { percent: importProgress })
+                        : t("settings.importProcessing")}
+                    </p>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          importPhase === "processing"
+                            ? "w-full animate-pulse bg-primary/70"
+                            : "bg-primary"
+                        }`}
+                        style={importPhase === "upload" ? { width: `${importProgress}%` } : undefined}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {t("settings.importBtn")}
+                  </Button>
+                )}
                 <input
                   ref={inputRef}
                   type="file"

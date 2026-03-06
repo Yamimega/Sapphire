@@ -35,9 +35,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  await withTransaction(() => {
+  await withTransaction((tx) => {
     for (let i = 0; i < photoIds.length; i++) {
-      db.update(photos).set({ displayOrder: i }).where(eq(photos.id, photoIds[i])).run();
+      tx.update(photos).set({ displayOrder: i }).where(eq(photos.id, photoIds[i])).run();
     }
   });
 
