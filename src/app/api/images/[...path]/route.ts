@@ -206,16 +206,55 @@ export async function GET(
     return new NextResponse(null, { status: 403, statusText: "Forbidden" });
   }
 
+  const ext = path.extname(storageKey).toLowerCase();
+  const contentType = EXT_TO_MIME[ext] ?? "application/octet-stream";
+
+  // ETag from content hash embedded in filename (e.g. originals/abc123.jpg)
+  const basename = path.basename(storageKey, ext);
+  const etag = `"${basename}"`;
+  const cacheControl = authed
+    ? "private, max-age=31536000, immutable"
+    : "public, max-age=3600, stale-while-revalidate=86400";
+
+  // Protection (watermark + encrypt + tiles) for non-downloadable galleries
+  const needsProtection = !authed && isImagePath && !!galleryId && isImageProtected(galleryId);
+
+  // 304 Not Modified — skip for protected images (they use no-cache)
+  if (!needsProtection) {
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch) {
+      const tags = ifNoneMatch.split(",").map((t) => t.trim().replace(/^W\//, ""));
+      if (tags.includes("*") || tags.includes(etag)) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: { "ETag": etag, "Cache-Control": cacheControl },
+        });
+      }
+    }
+  }
+
+  const imageHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+    "ETag": etag,
+    "Cache-Control": cacheControl,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": "inline",
+  };
+
+  // X-Accel-Redirect: let nginx serve the file directly from disk.
+  // Only for local storage, non-protected images. Huge perf win — no Node memory.
+  // Enabled via NGINX_ACCEL=true env var (set in .env on nginx-proxied deployments).
+  if (!needsProtection && storage.localDir && process.env.NGINX_ACCEL === "true") {
+    return new NextResponse(null, {
+      status: 200,
+      headers: { ...imageHeaders, "X-Accel-Redirect": `/internal-images/${storageKey}` },
+    });
+  }
+
   const rawBuffer = await storage.get(storageKey);
   if (!rawBuffer) {
     return NextResponse.json({ error: "Image not found" }, { status: 404 });
   }
-
-  const ext = path.extname(storageKey).toLowerCase();
-  const contentType = EXT_TO_MIME[ext] ?? "application/octet-stream";
-
-  // Protection (watermark + encrypt + tiles) for non-downloadable galleries
-  const needsProtection = !authed && isImagePath && !!galleryId && isImageProtected(galleryId);
 
   if (needsProtection) {
     const tileParam = request.nextUrl.searchParams.get("tile");
@@ -269,13 +308,6 @@ export async function GET(
     });
   }
 
-  // Normal serving
-  return new NextResponse(new Uint8Array(rawBuffer), {
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": authed ? "private, max-age=31536000, immutable" : "private, no-store, no-cache",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "inline",
-    },
-  });
+  // Normal serving (S3 or direct access without nginx)
+  return new NextResponse(new Uint8Array(rawBuffer), { headers: imageHeaders });
 }
