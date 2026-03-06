@@ -34,7 +34,10 @@ export function PhotoUpload({ albumId, onUploadComplete }: PhotoUploadProps) {
         file.type === "image/webp" ||
         file.type === "image/gif"
       ) {
-        newPending.push({ file, preview: URL.createObjectURL(file) });
+        newPending.push({
+          file,
+          preview: file.size <= 2 * 1024 * 1024 ? URL.createObjectURL(file) : "",
+        });
       }
     }
     setPendingFiles((prev) => [...prev, ...newPending]);
@@ -43,13 +46,13 @@ export function PhotoUpload({ albumId, onUploadComplete }: PhotoUploadProps) {
   const removeFile = useCallback((index: number) => {
     setPendingFiles((prev) => {
       const removed = prev[index];
-      if (removed) URL.revokeObjectURL(removed.preview);
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
       return prev.filter((_, i) => i !== index);
     });
   }, []);
 
   const clearAll = useCallback(() => {
-    pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+    pendingFiles.forEach((f) => { if (f.preview) URL.revokeObjectURL(f.preview); });
     setPendingFiles([]);
   }, [pendingFiles]);
 
@@ -201,11 +204,20 @@ export function PhotoUpload({ albumId, onUploadComplete }: PhotoUploadProps) {
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
             {pendingFiles.map((pf, i) => (
               <div key={i} className="group relative aspect-square overflow-hidden rounded-md bg-muted">
-                <img
-                  src={pf.preview}
-                  alt={pf.file.name}
-                  className="h-full w-full object-cover"
-                />
+                {pf.preview ? (
+                  <img
+                    src={pf.preview}
+                    alt={pf.file.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center p-1">
+                    <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
+                    <span className="line-clamp-2 text-center text-[10px] text-muted-foreground">
+                      {pf.file.name}
+                    </span>
+                  </div>
+                )}
                 {!isUploading && (
                   <button
                     onClick={() => removeFile(i)}
@@ -215,9 +227,11 @@ export function PhotoUpload({ albumId, onUploadComplete }: PhotoUploadProps) {
                     <X className="h-3 w-3" />
                   </button>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 truncate bg-black/50 px-1 py-0.5 text-[10px] text-white">
-                  {pf.file.name}
-                </div>
+                {pf.preview && (
+                  <div className="absolute bottom-0 left-0 right-0 truncate bg-black/50 px-1 py-0.5 text-[10px] text-white">
+                    {pf.file.name}
+                  </div>
+                )}
               </div>
             ))}
           </div>
