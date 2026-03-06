@@ -3,8 +3,7 @@ import { db, withTransaction } from "@/lib/db";
 import { siteSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
-import { UPLOADS_DIR } from "@/lib/constants";
-import fs from "fs";
+import { storage } from "@/lib/storage";
 import path from "path";
 
 const DEFAULT_SETTINGS: Record<string, string> = {
@@ -28,13 +27,12 @@ export async function GET() {
   }
 
   // Check if custom favicon exists
-  const faviconDir = path.join(UPLOADS_DIR, "favicon");
-  const faviconFiles = fs.existsSync(faviconDir)
-    ? fs.readdirSync(faviconDir).filter((f) => /\.(ico|png|svg|jpg|jpeg|webp)$/i.test(f))
-    : [];
+  const faviconFiles = (await storage.list("favicon/")).filter((f) =>
+    /\.(ico|png|svg|jpg|jpeg|webp)$/i.test(f)
+  );
   settings.hasFavicon = faviconFiles.length > 0 ? "true" : "false";
   if (faviconFiles.length > 0) {
-    settings.faviconUrl = `/api/images/favicon/${faviconFiles[0]}`;
+    settings.faviconUrl = `/api/images/${faviconFiles[0]}`;
   }
 
   return NextResponse.json({ settings });
@@ -51,17 +49,12 @@ export async function PUT(request: NextRequest) {
     const file = formData.get("favicon") as File | null;
 
     if (file) {
-      const faviconDir = path.join(UPLOADS_DIR, "favicon");
-      fs.mkdirSync(faviconDir, { recursive: true });
-
       // Clear old favicons
-      for (const f of fs.readdirSync(faviconDir)) {
-        fs.unlinkSync(path.join(faviconDir, f));
-      }
+      await storage.deletePrefix("favicon/");
 
       const ext = path.extname(file.name) || ".png";
       const buffer = Buffer.from(await file.arrayBuffer());
-      fs.writeFileSync(path.join(faviconDir, `favicon${ext}`), buffer);
+      await storage.put(`favicon/favicon${ext}`, buffer);
     }
 
     return NextResponse.json({ success: true });

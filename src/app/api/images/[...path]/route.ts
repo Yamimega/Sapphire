@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import fs from "fs";
 import crypto from "crypto";
 import sharp from "sharp";
 import { db } from "@/lib/db";
 import { albums } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { UPLOADS_DIR, EXT_TO_MIME } from "@/lib/constants";
+import { EXT_TO_MIME } from "@/lib/constants";
 import { isAuthenticated } from "@/lib/auth";
 import { verifyImageSignature } from "@/lib/image-token";
 import { xorEncrypt } from "@/lib/server-utils";
+import { storage } from "@/lib/storage";
 
 // Watermark config from env
 type WatermarkStyle = "diagonal" | "center" | "strip" | "corner" | "cross";
@@ -175,10 +175,10 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const segments = (await params).path;
-  const filePath = path.join(UPLOADS_DIR, ...segments);
+  const storageKey = segments.join("/");
 
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(UPLOADS_DIR))) {
+  // Validate key doesn't contain path traversal
+  if (storageKey.includes("..")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -192,7 +192,7 @@ export async function GET(
   if (!authed && isImagePath) {
     const exp = request.nextUrl.searchParams.get("exp");
     const sig = request.nextUrl.searchParams.get("sig");
-    const basePath = `/api/images/${segments.join("/")}`;
+    const basePath = `/api/images/${storageKey}`;
 
     if (!verifyImageSignature(basePath, galleryId, exp, sig)) {
       return NextResponse.json({ error: "Invalid or expired image URL" }, { status: 403 });
@@ -206,13 +206,13 @@ export async function GET(
     return new NextResponse(null, { status: 403, statusText: "Forbidden" });
   }
 
-  if (!fs.existsSync(resolved)) {
+  const rawBuffer = await storage.get(storageKey);
+  if (!rawBuffer) {
     return NextResponse.json({ error: "Image not found" }, { status: 404 });
   }
 
-  const ext = path.extname(resolved).toLowerCase();
+  const ext = path.extname(storageKey).toLowerCase();
   const contentType = EXT_TO_MIME[ext] ?? "application/octet-stream";
-  const rawBuffer = fs.readFileSync(resolved);
 
   // Protection (watermark + encrypt + tiles) for non-downloadable galleries
   const needsProtection = !authed && isImagePath && !!galleryId && isImageProtected(galleryId);
@@ -225,7 +225,7 @@ export async function GET(
     let width: number;
     let height: number;
     if (WATERMARK_ENABLED) {
-      const wmResult = await getWatermarkedImage(resolved, rawBuffer);
+      const wmResult = await getWatermarkedImage(storageKey, rawBuffer);
       watermarked = wmResult.buffer;
       width = wmResult.width;
       height = wmResult.height;
@@ -270,7 +270,7 @@ export async function GET(
   }
 
   // Normal serving
-  return new NextResponse(rawBuffer, {
+  return new NextResponse(new Uint8Array(rawBuffer), {
     headers: {
       "Content-Type": contentType,
       "Cache-Control": authed ? "private, max-age=31536000, immutable" : "private, no-store, no-cache",

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSqlite, DB_PATH } from "@/lib/db";
-import { UPLOADS_DIR } from "@/lib/constants";
 import { isAuthenticated, requireAuthResponse } from "@/lib/auth";
 import { isPostgres } from "@/lib/db/config";
+import { storage } from "@/lib/storage";
 import archiver from "archiver";
 import fs from "fs";
 import { PassThrough, Readable } from "stream";
@@ -38,8 +38,22 @@ export async function GET() {
   archive.pipe(passThrough);
   archive.file(DB_PATH, { name: "database.db" });
 
-  if (fs.existsSync(UPLOADS_DIR)) {
-    archive.directory(UPLOADS_DIR, "uploads");
+  if (storage.localDir) {
+    // Local storage: efficient directory streaming
+    if (fs.existsSync(storage.localDir)) {
+      archive.directory(storage.localDir, "uploads");
+    }
+  } else {
+    // Remote storage (S3/R2): fetch files with bounded concurrency
+    const keys = await storage.list("");
+    const CONCURRENCY = 10;
+    for (let i = 0; i < keys.length; i += CONCURRENCY) {
+      const batch = keys.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch.map((key) => storage.get(key).then((data) => ({ key, data }))));
+      for (const { key, data } of results) {
+        if (data) archive.append(data, { name: `uploads/${key}` });
+      }
+    }
   }
 
   archive.finalize();

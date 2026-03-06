@@ -32,7 +32,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
   }
 
-  deletePhotoFiles(photo);
+  await deletePhotoFiles(photo);
 
   db.delete(photos).where(eq(photos.id, id)).run();
 

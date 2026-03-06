@@ -31,6 +31,15 @@ SAPPHIRE_WATERMARK_STYLE=diagonal
 
 # Image URL token expiration (seconds)
 # SAPPHIRE_IMAGE_TOKEN_TTL=3600
+
+# Storage: local (default) or s3 (works with AWS S3, Cloudflare R2, MinIO)
+# STORAGE_PROVIDER=s3
+# S3_BUCKET=your-bucket
+# S3_REGION=auto
+# S3_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+# S3_ACCESS_KEY_ID=your-key
+# S3_SECRET_ACCESS_KEY=your-secret
+# S3_PREFIX=
 `;
 
 try {
